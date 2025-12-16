@@ -1,0 +1,221 @@
+/* global.css */
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+  text-align: center;
+}
+
+h2 {
+    margin-bottom: 0.5em;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.game-layout {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+.sidebar {
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.board-container {
+  display: flex;
+  justify-content: center;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(15, 40px);
+  grid-template-rows: repeat(15, 40px);
+  border: 2px solid #666;
+  background-color: #d2b48c; /* 木目調の色 */
+  padding: 5px;
+  position: relative;
+}
+
+/* 罫線を追加 */
+.board::before {
+    content: '';
+    position: absolute;
+    top: 25px; /* 最初の線の位置 */
+    left: 25px;
+    right: 25px;
+    bottom: 25px;
+    background-size: 40px 40px;
+    background-image:
+        linear-gradient(to right, #333 1px, transparent 1px),
+        linear-gradient(to bottom, #333 1px, transparent 1px);
+}
+
+
+.board-row {
+  display: contents; /* grid layoutに直接参加させる */
+}
+
+.cell {
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent; /* デバッグ用に枠線が必要なら #ccc に */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  position: relative; /* 罫線の上に配置するため */
+  z-index: 1;
+}
+
+.cell:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.stone {
+  width: 85%;
+  height: 85%;
+  border-radius: 50%;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.black-stone {
+  background: radial-gradient(circle at 30% 30%, #555, #000);
+  animation: collapse 0.4s ease-out;
+}
+
+.white-stone {
+  background: radial-gradient(circle at 30% 30%, #fff, #ccc);
+  border: 1px solid #888;
+  animation: collapse 0.4s ease-out;
+}
+
+.quantum-stone {
+  border: 1px solid rgba(0,0,0,0.5);
+  animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.flickering-stone {
+  animation: flicker 1.0s infinite alternate ease-in-out;
+  border-radius: 50%;
+}
+
+.game-info {
+  background-color: #2f2f2f;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.winner-message {
+    color: #ffd700;
+    text-align: center;
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.control-button {
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-button:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+/* 波動関数の収縮アニメーション */
+@keyframes collapse {
+  0% {
+    transform: scale(2);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* 石を置いたときのポップアニメーション */
+@keyframes pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 色がパラパラ切り替わるアニメーション */
+@keyframes flicker {
+  0% {
+    background: radial-gradient(circle at 30% 30%, #444, #222);
+    border: 1px solid #555;
+    transform: scale(0.95);
+  }
+  100% {
+    background: radial-gradient(circle at 30% 30%, #999, #666);
+    border: 1px solid #aaa;
+    transform: scale(1.05);
+  }
+}
+
+.no-winner-message {
+  color: #ffa500;
+  text-align: center;
+  animation: fadeOut 2s forwards;
+}
+
+@keyframes fadeOut {
+  0% { opacity: 0; transform: translateY(-10px); }
+  10% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
