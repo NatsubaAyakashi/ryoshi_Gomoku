@@ -6,6 +6,7 @@
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
   background-color: #242424;
+  --cell-size: 40px;
 }
 
 body {
@@ -55,8 +56,8 @@ h2 {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(15, 40px);
-  grid-template-rows: repeat(15, 40px);
+  grid-template-columns: repeat(15, var(--cell-size));
+  grid-template-rows: repeat(15, var(--cell-size));
   border: 2px solid #666;
   background-color: #d2b48c; /* 木目調の色 */
   padding: 5px;
@@ -67,11 +68,11 @@ h2 {
 .board::before {
     content: '';
     position: absolute;
-    top: 25px; /* 最初の線の位置 */
-    left: 25px;
-    right: 25px;
-    bottom: 25px;
-    background-size: 40px 40px;
+    top: calc(5px + var(--cell-size) / 2); /* 最初の線の位置 */
+    left: calc(5px + var(--cell-size) / 2);
+    right: calc(5px + var(--cell-size) / 2);
+    bottom: calc(5px + var(--cell-size) / 2);
+    background-size: var(--cell-size) var(--cell-size);
     background-image:
         linear-gradient(to right, #333 1px, transparent 1px),
         linear-gradient(to bottom, #333 1px, transparent 1px);
@@ -83,8 +84,8 @@ h2 {
 }
 
 .cell {
-  width: 40px;
-  height: 40px;
+  width: var(--cell-size);
+  height: var(--cell-size);
   border: 1px solid transparent; /* デバッグ用に枠線が必要なら #ccc に */
   display: flex;
   justify-content: center;
@@ -98,6 +99,10 @@ h2 {
   background-color: rgba(0, 0, 0, 0.1);
 }
 
+.cell-pending {
+  background-color: rgba(255, 215, 0, 0.4); /* 選択中のハイライト（黄色） */
+}
+
 .stone {
   width: 85%;
   height: 85%;
@@ -106,7 +111,7 @@ h2 {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 12px;
+  font-size: calc(var(--cell-size) * 0.3);
   font-weight: bold;
 }
 
@@ -218,4 +223,51 @@ h2 {
   10% { opacity: 1; transform: translateY(0); }
   80% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  :root {
+    /* 画面幅に合わせてセルサイズを計算 (余白などを考慮) */
+    --cell-size: calc((100vw - 2rem) / 15);
+  }
+
+  .app-container {
+    padding: 0.5rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    margin: 0.5rem 0;
+  }
+
+  .game-layout {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .control-button {
+    padding: 1rem;
+    font-size: 1rem;
+  }
+
+  /* GameInfo内のボタン調整 */
+  .prob-button {
+    flex: 1;
+    padding: 12px 0 !important; /* インラインスタイルを上書き */
+    font-size: 1rem;
+    height: 48px; /* タッチしやすい高さ */
+  }
 }

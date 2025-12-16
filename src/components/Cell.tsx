@@ -5,9 +5,10 @@ interface CellProps {
   cellState: CellState;
   onClick: () => void;
   isCollapsing: boolean;
+  isPending: boolean;
 }
 
-const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing }) => {
+const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing, isPending }) => {
   const renderContent = () => {
     if (!cellState) {
       // 石がない場合
@@ -47,7 +48,7 @@ const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing }) => {
   };
 
   return (
-    <div className="cell" onClick={onClick}>
+    <div className={`cell ${isPending ? 'cell-pending' : ''}`} onClick={onClick}>
       {renderContent()}
     </div>
   );

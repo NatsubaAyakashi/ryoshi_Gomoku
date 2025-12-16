@@ -9,9 +9,11 @@ interface ControlsProps {
   isCollapsing: boolean;
   isStonePlaced: boolean;
   observationCount: number;
+  confirmPlacementMode: boolean;
+  onToggleConfirmMode: () => void;
 }
 
-const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount }) => {
+const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode }) => {
   return (
     <div className="controls">
       <button 
@@ -38,6 +40,17 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
       >
         リセット
       </button>
+
+      <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
+        <input 
+          type="checkbox" 
+          id="confirmMode" 
+          checked={confirmPlacementMode} 
+          onChange={onToggleConfirmMode}
+          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+        />
+        <label htmlFor="confirmMode" style={{ cursor: 'pointer' }}>置き間違い防止モード</label>
+      </div>
     </div>
   );
 };

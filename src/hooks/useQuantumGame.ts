@@ -20,12 +20,36 @@ const createInitialState = (): GameState => ({
   isObserving: false,
   isCollapsing: false,
   showNoWinnerMessage: false,
+  confirmPlacementMode: false,
+  pendingStone: null,
 });
 
 export const useQuantumGame = () => {
   const [gameState, setGameState] = useState<GameState>(createInitialState);
   const timeoutRef = useRef<number | undefined>(undefined);
   const cpuStateRef = useRef<'thinking' | 'placed' | 'observing' | 'reverted'>('thinking');
+  const gameStateRef = useRef(gameState);
+
+  // 最新のgameStateをRefに保持（イベントリスナー内で参照するため）
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  // ブラウザバックやリロード時の確認ダイアログ
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const state = gameStateRef.current;
+      // 盤面に石があるかチェック
+      const hasStones = state.board.some(row => row.some(cell => cell !== null));
+
+      if (!state.isGameOver && hasStones) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // コンポーネントのアンマウント時にタイムアウトをクリア
   useEffect(() => {
@@ -51,12 +75,24 @@ export const useQuantumGame = () => {
     setGameState(prev => ({ ...prev, selectedStoneIndex: index }));
   }, []);
 
+  // 置き間違い防止モードの切り替え
+  const toggleConfirmMode = useCallback(() => {
+    setGameState(prev => ({ ...prev, confirmPlacementMode: !prev.confirmPlacementMode, pendingStone: null }));
+  }, []);
+
   // 石を置く処理
   const placeStone = useCallback((row: number, col: number) => {
     setGameState(prev => {
       // ゲームオーバー後、観測中、収縮中、既に石を置いた場合、またはセルに既に石がある場合は何もしない
       if (prev.isGameOver || prev.isObserving || prev.isCollapsing || prev.isStonePlaced || prev.board[row][col]) {
         return prev;
+      }
+
+      // 置き間違い防止モードがONの場合の処理
+      if (prev.confirmPlacementMode) {
+        if (!prev.pendingStone || prev.pendingStone.row !== row || prev.pendingStone.col !== col) {
+          return { ...prev, pendingStone: { row, col } };
+        }
       }
 
       const newBoard = prev.board.map(r => [...r]);
@@ -75,6 +111,7 @@ export const useQuantumGame = () => {
         lastBlackStoneIndex: newLastBlack,
         lastWhiteStoneIndex: newLastWhite,
         isStonePlaced: true, // 石を置いたフラグを立てる（ターンはまだ交代しない）
+        pendingStone: null,
       };
     });
   }, []);
@@ -288,6 +325,7 @@ export const useQuantumGame = () => {
     placeStone,
     endTurn,
     selectStone,
+    toggleConfirmMode,
     observeBoard,
     resetGame,
   };

@@ -5,14 +5,14 @@ import Controls from './components/Controls';
 import { useQuantumGame } from './hooks/useQuantumGame';
 
 const App: React.FC = () => {
-  const { gameState, placeStone, endTurn, selectStone, observeBoard, resetGame } = useQuantumGame();
-  const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount } = gameState;
+  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, observeBoard, resetGame } = useQuantumGame();
+  const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount, confirmPlacementMode, pendingStone } = gameState;
 
   return (
     <div className="app-container">
       <h1>Quantum Gomoku</h1>
       <div className="game-layout">
-        <Board board={board} onCellClick={placeStone} isCollapsing={isCollapsing} />
+        <Board board={board} onCellClick={placeStone} isCollapsing={isCollapsing} pendingStone={pendingStone} />
         <div className="sidebar">
           <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <button 
@@ -58,6 +58,8 @@ const App: React.FC = () => {
             isCollapsing={isCollapsing}
             isStonePlaced={isStonePlaced}
             observationCount={currentPlayer === 'Black' ? blackObservationCount : whiteObservationCount}
+            confirmPlacementMode={confirmPlacementMode}
+            onToggleConfirmMode={toggleConfirmMode}
           />
         </div>
       </div>

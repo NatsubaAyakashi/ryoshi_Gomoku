@@ -44,4 +44,8 @@ export interface GameState {
   isCollapsing: boolean;
   // 勝負がつかなかった場合のメッセージ表示フラグ
   showNoWinnerMessage: boolean;
+  // 設定: 置き間違い防止モード
+  confirmPlacementMode: boolean;
+  // 確定待ちの石の位置
+  pendingStone: { row: number, col: number } | null;
 }

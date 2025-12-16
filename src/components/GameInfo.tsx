@@ -46,9 +46,10 @@ const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, 
           <p>白の観測残り: {whiteObservationCount}回</p>
         </div>
         <p>石の種類を選択 (黒になる確率):</p>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+        <div className="prob-button-container" style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
           {options.map((opt) => (
             <button
+              className="prob-button"
               key={opt.index}
               onClick={() => onSelectStone(opt.index as 0 | 1)}
               disabled={opt.disabled || isGameOver}

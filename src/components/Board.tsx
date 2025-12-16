@@ -6,9 +6,10 @@ interface BoardProps {
   board: BoardState;
   onCellClick: (row: number, col: number) => void;
   isCollapsing: boolean;
+  pendingStone: { row: number, col: number } | null;
 }
 
-const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing }) => {
+const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing, pendingStone }) => {
   return (
     <div className="board-container">
       <div className="board">
@@ -20,6 +21,7 @@ const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing }) => {
                 cellState={cell}
                 onClick={() => onCellClick(rowIndex, colIndex)}
                 isCollapsing={isCollapsing}
+                isPending={pendingStone?.row === rowIndex && pendingStone?.col === colIndex}
               />
             ))}
           </div>
