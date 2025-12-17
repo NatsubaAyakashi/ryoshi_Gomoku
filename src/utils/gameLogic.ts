@@ -141,3 +141,68 @@ export const getCpuMove = (board: BoardState): { r: number, c: number } | null =
   // 同じスコアの候補からランダムに選ぶ
   return bestMoves[Math.floor(Math.random() * bestMoves.length)];
 };
+
+/**
+ * CPUが観測を行うべきかどうかを判定する
+ * 戦略: 自分の色が5つ並ぶ確率が高いラインがあれば観測する
+ */
+export const shouldCpuObserve = (board: BoardState, cpuColor: Player, observationCount: number): boolean => {
+  if (observationCount <= 0) return false;
+
+  const size = board.length;
+  let maxWinProb = 0;
+
+  const directions = [
+    { r: 0, c: 1 },
+    { r: 1, c: 0 },
+    { r: 1, c: 1 },
+    { r: 1, c: -1 },
+  ];
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      for (const dir of directions) {
+        let lineProb = 1;
+        let stoneCount = 0;
+        
+        for (let i = 0; i < 5; i++) {
+          const nr = r + dir.r * i;
+          const nc = c + dir.c * i;
+          
+          if (nr < 0 || nr >= size || nc < 0 || nc >= size) {
+            lineProb = 0;
+            break;
+          }
+
+          const cell = board[nr][nc];
+          if (!cell) {
+            lineProb = 0;
+            break;
+          }
+
+          stoneCount++;
+          const probBlack = cell.probability;
+          const probCpu = cpuColor === 'Black' ? probBlack : (1 - probBlack);
+          lineProb *= probCpu;
+        }
+
+        if (stoneCount === 5) {
+          if (lineProb > maxWinProb) {
+            maxWinProb = lineProb;
+          }
+        }
+      }
+    }
+  }
+
+  // 勝利確率が高いほど観測しやすくなる
+  if (maxWinProb > 0.8) return Math.random() < 0.95; // 80%超ならほぼ確実に観測
+  if (maxWinProb > 0.5) return Math.random() < 0.80; // 50%超なら高確率で観測
+  if (maxWinProb > 0.2) {
+      // 20%超なら、残り回数に余裕があればたまに観測
+      return observationCount >= 3 ? Math.random() < 0.4 : Math.random() < 0.1;
+  }
+
+  // 勝ち目が薄い場合はごく稀に観測（気まぐれやブラフ）
+  return Math.random() < 0.02;
+};

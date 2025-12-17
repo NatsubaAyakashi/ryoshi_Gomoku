@@ -13,9 +13,10 @@ interface ControlsProps {
   onToggleConfirmMode: () => void;
   onUndo: () => void;
   isCpuTurn?: boolean;
+  isReverting: boolean;
 }
 
-const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn }) => {
+const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn, isReverting }) => {
   return (
     <div className="controls">
       <button 
@@ -26,7 +27,7 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
         {isObserving ? "元に戻す" : `観測する (残り${observationCount}回)`}
       </button>
 
-      {isStonePlaced && !isObserving && !isGameOver && (
+      {isStonePlaced && !isObserving && !isGameOver && !isReverting && (
         <button 
           onClick={onEndTurn}
           className="control-button"

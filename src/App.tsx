@@ -71,6 +71,7 @@ const App: React.FC = () => {
             onToggleConfirmMode={toggleConfirmMode}
             onUndo={undo}
             isCpuTurn={isCpuTurn}
+            isReverting={isReverting}
           />
         </div>
       </div>

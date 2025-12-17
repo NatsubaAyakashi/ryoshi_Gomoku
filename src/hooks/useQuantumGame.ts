@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState, Player, BoardState, GameMode } from '../types/game';
 import { BOARD_SIZE, STONE_PROBABILITIES } from '../utils/constants';
-import { checkWin, getCpuMove } from '../utils/gameLogic';
+import { checkWin, getCpuMove, shouldCpuObserve } from '../utils/gameLogic';
 
 // 初期状態を生成するヘルパー関数
 const createInitialState = (): GameState => ({
@@ -37,7 +37,7 @@ export const useQuantumGame = () => {
   const [gameState, setGameState] = useState<GameState>(createInitialState);
   const [history, setHistory] = useState<GameState[]>([]);
   const timeoutRef = useRef<number | undefined>(undefined);
-  const cpuStateRef = useRef<'thinking' | 'placed' | 'observing' | 'reverted'>('thinking');
+  const cpuStateRef = useRef<'thinking' | 'placed' | 'observing'>('thinking');
   const gameStateRef = useRef(gameState);
 
   // 最新のgameStateをRefに保持（イベントリスナー内で参照するため）
@@ -102,6 +102,9 @@ export const useQuantumGame = () => {
 
     setHistory(nextHistory);
     setGameState(nextState);
+
+    // CPUの状態をリセット
+    cpuStateRef.current = 'thinking';
 
     // タイマーがあればクリア
     if (timeoutRef.current !== undefined) {
@@ -250,7 +253,6 @@ export const useQuantumGame = () => {
 
             timeoutRef.current = window.setTimeout(() => {
               setGameState(prevState => {
-                setHistory(h => [...h, prevState]);
                 const nextPlayer = prevState.currentPlayer === 'Black' ? 'White' : 'Black';
                 let nextSelected: 0 | 1 = 0;
                 if (nextPlayer === 'Black') {
@@ -302,9 +304,9 @@ export const useQuantumGame = () => {
   // CPUのターン処理
   useEffect(() => {
     // 条件チェック: PvEモード、CPUのターン、ゲーム進行中、アニメーション中でない
-    const { gameMode, currentPlayer, cpuColor, isGameOver, isCollapsing, isStonePlaced, isObserving, blackObservationCount, whiteObservationCount } = gameState;
+    const { gameMode, currentPlayer, cpuColor, isGameOver, isCollapsing, isStonePlaced, isObserving, blackObservationCount, whiteObservationCount, isReverting } = gameState;
 
-    if (gameMode !== 'PvE' || currentPlayer !== cpuColor || isGameOver || isCollapsing) {
+    if (gameMode !== 'PvE' || currentPlayer !== cpuColor || isGameOver || isCollapsing || isReverting) {
       return;
     }
 
@@ -362,9 +364,8 @@ export const useQuantumGame = () => {
       // 石を置いた直後なら、観測するか判断
       if (cpuStateRef.current === 'placed') {
         timer = window.setTimeout(() => {
-          // 観測回数が残っていて、かつ30%の確率で観測を行う
           const cpuObsCount = currentPlayer === 'Black' ? blackObservationCount : whiteObservationCount;
-          if (cpuObsCount > 0 && Math.random() < 0.3) {
+          if (shouldCpuObserve(gameState.board, currentPlayer, cpuObsCount)) {
             cpuStateRef.current = 'observing';
             observeBoard();
           } else {
