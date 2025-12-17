@@ -4,9 +4,10 @@ import { BOARD_SIZE } from './constants';
 /**
  * 盤面をチェックして勝利したプレイヤーを判定する
  * @param board - 現在の盤面状態
+ * @param observer - 観測を行ったプレイヤー（両者勝利時の優先勝者）
  * @returns 勝利したプレイヤー、もしくは誰も勝利していなければnull
  */
-export const checkWin = (board: BoardState): Player | null => {
+export const checkWin = (board: BoardState, observer?: Player): { winner: Player | null, winningLine: { row: number, col: number }[] | null } => {
   // 探索する4つの方向（横、縦、右下がり斜め、左下がり斜め）
   const directions = [
     { r: 0, c: 1 }, // Horizontal
@@ -14,6 +15,11 @@ export const checkWin = (board: BoardState): Player | null => {
     { r: 1, c: 1 }, // Diagonal (\)
     { r: 1, c: -1 }, // Anti-diagonal (/)
   ];
+
+  let blackWins = false;
+  let whiteWins = false;
+  let blackLines: { row: number, col: number }[] = [];
+  let whiteLines: { row: number, col: number }[] = [];
 
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
@@ -24,6 +30,9 @@ export const checkWin = (board: BoardState): Player | null => {
       }
 
       const player = cell.observedColor;
+      // 既に勝利判定済みのプレイヤーならスキップ（ただし相手の勝利確認のためループは続行）
+      if (player === 'Black' && blackWins) continue;
+      if (player === 'White' && whiteWins) continue;
 
       for (const dir of directions) {
         let count = 1;
@@ -44,14 +53,42 @@ export const checkWin = (board: BoardState): Player | null => {
         
         // 5つ以上並んでいれば勝利
         if (count >= 5) {
-          return player;
+          const line = [];
+          for (let k = 0; k < 5; k++) {
+            line.push({ row: r + dir.r * k, col: c + dir.c * k });
+          }
+
+          if (player === 'Black') {
+            blackWins = true;
+            blackLines.push(...line);
+          }
+          if (player === 'White') {
+            whiteWins = true;
+            whiteLines.push(...line);
+          }
         }
       }
     }
+    // 両者勝利が確定したらループを抜ける
+    if (blackWins && whiteWins) break;
   }
 
-  // 勝者なし
-  return null;
+  let winner: Player | null = null;
+  let winningLine: { row: number, col: number }[] | null = null;
+
+  if (blackWins && whiteWins) {
+    // 両者勝利の場合は観測者（権利を行使した人）の勝ち
+    winner = observer || null;
+  } else if (blackWins) {
+    winner = 'Black';
+  } else if (whiteWins) {
+    winner = 'White';
+  }
+
+  if (winner === 'Black') winningLine = blackLines;
+  if (winner === 'White') winningLine = whiteLines;
+
+  return { winner, winningLine };
 };
 
 /**

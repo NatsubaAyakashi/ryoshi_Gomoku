@@ -6,9 +6,11 @@ interface CellProps {
   onClick: () => void;
   isCollapsing: boolean;
   isPending: boolean;
+  isWinning: boolean;
+  isReverting: boolean;
 }
 
-const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing, isPending }) => {
+const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing, isPending, isWinning, isReverting }) => {
   const renderContent = () => {
     if (!cellState) {
       // 石がない場合
@@ -40,7 +42,7 @@ const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing, isPending
       const textColor = cellState.probability > 0.5 ? '#fff' : '#000';
 
       return (
-        <div key="quantum" className="stone quantum-stone" style={{ background, color: textColor }}>
+        <div key="quantum" className={`stone quantum-stone ${isReverting ? 'reverting-stone' : ''}`} style={{ background, color: textColor }}>
           {probabilityPercent}%
         </div>
       );
@@ -48,7 +50,7 @@ const Cell: React.FC<CellProps> = ({ cellState, onClick, isCollapsing, isPending
   };
 
   return (
-    <div className={`cell ${isPending ? 'cell-pending' : ''}`} onClick={onClick}>
+    <div className={`cell ${isPending ? 'cell-pending' : ''} ${isWinning ? 'cell-winning' : ''}`} onClick={onClick}>
       {renderContent()}
     </div>
   );

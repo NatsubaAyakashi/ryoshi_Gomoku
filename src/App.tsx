@@ -1,18 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Board from './components/Board';
 import GameInfo from './components/GameInfo';
 import Controls from './components/Controls';
+import RuleModal from './components/RuleModal';
 import { useQuantumGame } from './hooks/useQuantumGame';
 
 const App: React.FC = () => {
-  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, observeBoard, resetGame } = useQuantumGame();
-  const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount, confirmPlacementMode, pendingStone } = gameState;
+  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, undo, observeBoard, resetGame } = useQuantumGame();
+  const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount, confirmPlacementMode, pendingStone, gameMode, cpuColor, winningLine, isReverting } = gameState;
+
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+
+  const isCpuTurn = gameMode === 'PvE' && currentPlayer === cpuColor;
 
   return (
     <div className="app-container">
-      <h1>Quantum Gomoku</h1>
+      <div className="header-container">
+        <h1>Quantum Gomoku</h1>
+        <button className="rules-btn" onClick={() => setIsRuleModalOpen(true)}>ルールを見る</button>
+      </div>
+      
       <div className="game-layout">
-        <Board board={board} onCellClick={placeStone} isCollapsing={isCollapsing} pendingStone={pendingStone} />
+        <Board board={board} onCellClick={placeStone} isCollapsing={isCollapsing} pendingStone={pendingStone} winningLine={winningLine} isReverting={isReverting} />
         <div className="sidebar">
           <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <button 
@@ -60,9 +69,13 @@ const App: React.FC = () => {
             observationCount={currentPlayer === 'Black' ? blackObservationCount : whiteObservationCount}
             confirmPlacementMode={confirmPlacementMode}
             onToggleConfirmMode={toggleConfirmMode}
+            onUndo={undo}
+            isCpuTurn={isCpuTurn}
           />
         </div>
       </div>
+
+      <RuleModal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} />
     </div>
   );
 };

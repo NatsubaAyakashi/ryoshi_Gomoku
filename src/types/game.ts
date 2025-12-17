@@ -48,4 +48,8 @@ export interface GameState {
   confirmPlacementMode: boolean;
   // 確定待ちの石の位置
   pendingStone: { row: number, col: number } | null;
+  // 勝利ラインの座標
+  winningLine: { row: number, col: number }[] | null;
+  // 盤面復元アニメーション中かどうか
+  isReverting: boolean;
 }

@@ -22,10 +22,20 @@ const createInitialState = (): GameState => ({
   showNoWinnerMessage: false,
   confirmPlacementMode: false,
   pendingStone: null,
+  winningLine: null,
+  isReverting: false,
 });
+
+// 1回分のUndoを行うヘルパー関数（純粋関数）
+const performUndo = (currentHistory: GameState[]) => {
+  const previousState = currentHistory[currentHistory.length - 1];
+  const newHistory = currentHistory.slice(0, -1);
+  return { state: previousState, history: newHistory };
+};
 
 export const useQuantumGame = () => {
   const [gameState, setGameState] = useState<GameState>(createInitialState);
+  const [history, setHistory] = useState<GameState[]>([]);
   const timeoutRef = useRef<number | undefined>(undefined);
   const cpuStateRef = useRef<'thinking' | 'placed' | 'observing' | 'reverted'>('thinking');
   const gameStateRef = useRef(gameState);
@@ -60,16 +70,6 @@ export const useQuantumGame = () => {
     };
   }, []);
 
-  // メッセージを一定時間後に非表示にする
-  useEffect(() => {
-    if (gameState.showNoWinnerMessage) {
-      const timer = setTimeout(() => {
-        setGameState(prev => ({ ...prev, showNoWinnerMessage: false }));
-      }, 2000); // 2秒後に消す
-      return () => clearTimeout(timer);
-    }
-  }, [gameState.showNoWinnerMessage]);
-
   // 石の種類を選択する処理
   const selectStone = useCallback((index: 0 | 1) => {
     setGameState(prev => ({ ...prev, selectedStoneIndex: index }));
@@ -79,6 +79,36 @@ export const useQuantumGame = () => {
   const toggleConfirmMode = useCallback(() => {
     setGameState(prev => ({ ...prev, confirmPlacementMode: !prev.confirmPlacementMode, pendingStone: null }));
   }, []);
+
+  // 待った（Undo）機能
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    
+    let { state: nextState, history: nextHistory } = performUndo(history);
+
+    // PvEモードの場合の追加ロジック
+    if (gameState.gameMode === 'PvE' && gameState.cpuColor) {
+      // 復元した状態がCPUのターン、またはプレイヤーのターンだが石が置かれている（＝ターン終了前）場合は、
+      // プレイヤーのターン開始時（石を置く前）になるまで遡る
+      while (
+        nextHistory.length > 0 &&
+        (nextState.currentPlayer === gameState.cpuColor || nextState.isStonePlaced)
+      ) {
+        const res = performUndo(nextHistory);
+        nextState = res.state;
+        nextHistory = res.history;
+      }
+    }
+
+    setHistory(nextHistory);
+    setGameState(nextState);
+
+    // タイマーがあればクリア
+    if (timeoutRef.current !== undefined) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = undefined;
+    }
+  }, [history, gameState.gameMode, gameState.cpuColor]);
 
   // 石を置く処理
   const placeStone = useCallback((row: number, col: number) => {
@@ -94,6 +124,9 @@ export const useQuantumGame = () => {
           return { ...prev, pendingStone: { row, col } };
         }
       }
+
+      // 履歴に保存
+      setHistory(h => [...h, prev]);
 
       const newBoard = prev.board.map(r => [...r]);
       const probability = STONE_PROBABILITIES[prev.currentPlayer][prev.selectedStoneIndex];
@@ -119,14 +152,20 @@ export const useQuantumGame = () => {
   // ターン終了処理
   const endTurn = useCallback(() => {
     setGameState(prev => {
+      // 履歴に保存
+      setHistory(h => [...h, prev]);
+
       const nextPlayer = prev.currentPlayer === 'Black' ? 'White' : 'Black';
 
       // 次のプレイヤーのデフォルト選択を決定（制限がある場合は強制的に変更）
       let nextSelected: 0 | 1 = 0;
-      if (nextPlayer === 'Black' && prev.lastBlackStoneIndex === 0) {
-        nextSelected = 1;
-      } else if (nextPlayer === 'White' && prev.lastWhiteStoneIndex === 1) {
-        nextSelected = 0;
+      if (nextPlayer === 'Black') {
+        if (prev.lastBlackStoneIndex === 0) nextSelected = 1;
+        else nextSelected = 0;
+      } else {
+        // 白のデフォルトは10% (index 1)
+        if (prev.lastWhiteStoneIndex === 1) nextSelected = 0;
+        else nextSelected = 1;
       }
 
       return {
@@ -143,26 +182,15 @@ export const useQuantumGame = () => {
     // 既にゲームオーバーや収縮中の場合は何もしない
     if (gameState.isGameOver || gameState.isCollapsing) return;
 
-    // 石を置いていない場合は観測できない（元に戻す操作は除く）
-    if (!gameState.isStonePlaced && !gameState.isObserving) return;
-
-    // 既に観測中で勝負がついていない場合、元に戻す（確率状態への復帰）
-    if (gameState.isObserving) {
-      setGameState(prev => {
-        const revertedBoard = prev.board.map(row =>
-          row.map(cell => {
-            if (!cell) return null;
-            return { ...cell, observedColor: undefined };
-          })
-        );
-        return { ...prev, board: revertedBoard, isObserving: false };
-      });
-      return;
-    }
+    // 石を置いていない場合、または既に観測中（結果表示中）の場合は観測できない
+    if (!gameState.isStonePlaced || gameState.isObserving) return;
 
     // 観測回数のチェック
     const currentCount = gameState.currentPlayer === 'Black' ? gameState.blackObservationCount : gameState.whiteObservationCount;
     if (currentCount <= 0) return;
+
+    // 履歴に保存
+    setHistory(h => [...h, gameState]);
 
     // 観測開始：まずは収縮アニメーションを開始
     setGameState(prev => ({
@@ -188,25 +216,69 @@ export const useQuantumGame = () => {
           })
         );
 
-        const winner = checkWin(observedBoard);
+        const { winner, winningLine } = checkWin(observedBoard, prev.currentPlayer);
 
         // 観測回数を減らす
         const newBlackCount = prev.currentPlayer === 'Black' ? prev.blackObservationCount - 1 : prev.blackObservationCount;
         const newWhiteCount = prev.currentPlayer === 'White' ? prev.whiteObservationCount - 1 : prev.whiteObservationCount;
 
-        return {
-          ...prev,
-          board: observedBoard,
-          winner: winner,
-          isGameOver: winner !== null,
-          // 勝負がつかなければ観測中フラグを立てる
-          isObserving: winner === null,
-          // アニメーション終了
-          isCollapsing: false,
-          showNoWinnerMessage: winner === null,
-          blackObservationCount: newBlackCount,
-          whiteObservationCount: newWhiteCount,
-        };
+        if (winner) {
+          return {
+            ...prev,
+            board: observedBoard,
+            winner: winner,
+            isGameOver: true,
+            winningLine: winningLine,
+            isObserving: false,
+            isCollapsing: false,
+            showNoWinnerMessage: false,
+            blackObservationCount: newBlackCount,
+            whiteObservationCount: newWhiteCount,
+          };
+        } else {
+          // 勝負がつかなかった場合 -> 自動で元に戻してターン終了
+          timeoutRef.current = window.setTimeout(() => {
+            setGameState(prevState => {
+              const revertedBoard = prevState.board.map(row =>
+                row.map(cell => {
+                  if (!cell) return null;
+                  return { ...cell, observedColor: undefined };
+                })
+              );
+              return { ...prevState, board: revertedBoard, isObserving: false, isReverting: true, showNoWinnerMessage: false };
+            });
+
+            timeoutRef.current = window.setTimeout(() => {
+              setGameState(prevState => {
+                setHistory(h => [...h, prevState]);
+                const nextPlayer = prevState.currentPlayer === 'Black' ? 'White' : 'Black';
+                let nextSelected: 0 | 1 = 0;
+                if (nextPlayer === 'Black') {
+                  if (prevState.lastBlackStoneIndex === 0) nextSelected = 1;
+                  else nextSelected = 0;
+                } else {
+                  if (prevState.lastWhiteStoneIndex === 1) nextSelected = 0;
+                  else nextSelected = 1;
+                }
+                return { ...prevState, isReverting: false, currentPlayer: nextPlayer, selectedStoneIndex: nextSelected, isStonePlaced: false };
+              });
+              timeoutRef.current = undefined;
+            }, 500);
+          }, 2000);
+
+          return {
+            ...prev,
+            board: observedBoard,
+            winner: null,
+            isGameOver: false,
+            winningLine: null,
+            isObserving: true,
+            isCollapsing: false,
+            showNoWinnerMessage: true,
+            blackObservationCount: newBlackCount,
+            whiteObservationCount: newWhiteCount,
+          };
+        }
       });
       timeoutRef.current = undefined;
     }, 1000); // 1秒間パラパラさせる
@@ -224,22 +296,28 @@ export const useQuantumGame = () => {
       gameMode: mode ?? prev.gameMode, // モード指定がなければ現在のモードを維持
       cpuColor: cpuColor !== undefined ? cpuColor : prev.cpuColor // CPUの色指定
     }));
+    setHistory([]);
   }, []);
 
   // CPUのターン処理
   useEffect(() => {
     // 条件チェック: PvEモード、CPUのターン、ゲーム進行中、アニメーション中でない
-    if (gameState.gameMode !== 'PvE' || gameState.currentPlayer !== gameState.cpuColor || gameState.isGameOver || gameState.isCollapsing) {
+    const { gameMode, currentPlayer, cpuColor, isGameOver, isCollapsing, isStonePlaced, isObserving, blackObservationCount, whiteObservationCount } = gameState;
+
+    if (gameMode !== 'PvE' || currentPlayer !== cpuColor || isGameOver || isCollapsing) {
       return;
     }
 
     let timer: number | undefined;
 
     // --- フェーズ1: 石を置く ---
-    if (!gameState.isStonePlaced && !gameState.isObserving) {
+    if (!isStonePlaced && !isObserving) {
       // 思考時間（1秒）
       timer = window.setTimeout(() => {
         cpuStateRef.current = 'placed';
+
+        // 履歴に保存
+        setHistory(h => [...h, gameState]);
 
         setGameState(prev => {
           // 1. 石の選択
@@ -280,19 +358,12 @@ export const useQuantumGame = () => {
     }
 
     // --- フェーズ2: 観測するか決める or ターン終了 ---
-    else if (gameState.isStonePlaced && !gameState.isObserving) {
-      // 観測から戻ってきた直後なら、即座にターン終了
-      if (cpuStateRef.current === 'reverted') {
-        timer = window.setTimeout(() => {
-          endTurn();
-          cpuStateRef.current = 'thinking';
-        }, 500);
-      } 
+    else if (isStonePlaced && !isObserving) {
       // 石を置いた直後なら、観測するか判断
-      else if (cpuStateRef.current === 'placed') {
+      if (cpuStateRef.current === 'placed') {
         timer = window.setTimeout(() => {
           // 観測回数が残っていて、かつ30%の確率で観測を行う
-          const cpuObsCount = gameState.currentPlayer === 'Black' ? gameState.blackObservationCount : gameState.whiteObservationCount;
+          const cpuObsCount = currentPlayer === 'Black' ? blackObservationCount : whiteObservationCount;
           if (cpuObsCount > 0 && Math.random() < 0.3) {
             cpuStateRef.current = 'observing';
             observeBoard();
@@ -301,17 +372,6 @@ export const useQuantumGame = () => {
             cpuStateRef.current = 'thinking';
           }
         }, 1000);
-      }
-    }
-
-    // --- フェーズ3: 観測結果の確認（勝負がつかなかった場合） ---
-    else if (gameState.isObserving) {
-      // 自分が観測を実行した状態なら、元に戻す
-      if (cpuStateRef.current === 'observing') {
-        timer = window.setTimeout(() => {
-          cpuStateRef.current = 'reverted';
-          observeBoard(); // 元に戻す
-        }, 1500); // 結果を少し見せてから戻す
       }
     }
 
@@ -326,6 +386,7 @@ export const useQuantumGame = () => {
     endTurn,
     selectStone,
     toggleConfirmMode,
+    undo,
     observeBoard,
     resetGame,
   };

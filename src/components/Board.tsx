@@ -7,9 +7,11 @@ interface BoardProps {
   onCellClick: (row: number, col: number) => void;
   isCollapsing: boolean;
   pendingStone: { row: number, col: number } | null;
+  winningLine: { row: number, col: number }[] | null;
+  isReverting: boolean;
 }
 
-const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing, pendingStone }) => {
+const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing, pendingStone, winningLine, isReverting }) => {
   return (
     <div className="board-container">
       <div className="board">
@@ -22,6 +24,8 @@ const Board: React.FC<BoardProps> = ({ board, onCellClick, isCollapsing, pending
                 onClick={() => onCellClick(rowIndex, colIndex)}
                 isCollapsing={isCollapsing}
                 isPending={pendingStone?.row === rowIndex && pendingStone?.col === colIndex}
+                isWinning={winningLine?.some(pos => pos.row === rowIndex && pos.col === colIndex) ?? false}
+                isReverting={isReverting}
               />
             ))}
           </div>

@@ -103,6 +103,12 @@ h2 {
   background-color: rgba(255, 215, 0, 0.4); /* 選択中のハイライト（黄色） */
 }
 
+.cell-winning {
+  background-color: rgba(255, 215, 0, 0.6);
+  box-shadow: 0 0 10px #ffd700;
+  z-index: 2;
+}
+
 .stone {
   width: 85%;
   height: 85%;
@@ -134,6 +140,10 @@ h2 {
 .flickering-stone {
   animation: flicker 1.0s infinite alternate ease-in-out;
   border-radius: 50%;
+}
+
+.reverting-stone {
+  animation: revert 0.5s ease-out;
 }
 
 .game-info {
@@ -225,6 +235,50 @@ h2 {
   100% { opacity: 0; }
 }
 
+/* 観測結果表示中のプログレスバー */
+.progress-bar {
+  height: 6px;
+  background-color: #555;
+  border-radius: 3px;
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  background-color: #ffa500;
+  animation: shrink 2s linear forwards;
+}
+
+/* 盤面復元アニメーション */
+@keyframes revert {
+  0% {
+    transform: scale(1.2);
+    opacity: 0.5;
+    filter: blur(2px);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   :root {
@@ -270,4 +324,88 @@ h2 {
     font-size: 1rem;
     height: 48px; /* タッチしやすい高さ */
   }
+}
+
+/* ヘッダーとルールボタン */
+.header-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.rules-btn {
+  position: absolute;
+  right: 0;
+  background: none;
+  border: 1px solid #666;
+  color: #ccc;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.rules-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* モーダルウィンドウ */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  background-color: #2f2f2f;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border: 1px solid #444;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  color: #ffd700;
+  text-align: center;
+  border-bottom: 1px solid #555;
+  padding-bottom: 1rem;
+}
+
+.rule-text {
+  text-align: left;
+  line-height: 1.6;
+}
+
+.rule-text ul {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.close-button {
+  display: block;
+  margin: 2rem auto 0;
+  padding: 0.8rem 2rem;
+  background-color: #555;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }

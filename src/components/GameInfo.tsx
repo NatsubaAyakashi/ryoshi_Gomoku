@@ -17,7 +17,12 @@ interface GameInfoProps {
 const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, onSelectStone, winner, isGameOver, showNoWinnerMessage, blackObservationCount, whiteObservationCount }) => {
   const getMessage = () => {
     if (showNoWinnerMessage) {
-      return <h2 className="no-winner-message">勝負つかず...</h2>;
+      return (
+        <div>
+          <h2 className="no-winner-message">勝負つかず...</h2>
+          <div className="progress-bar" />
+        </div>
+      );
     }
 
     if (isGameOver && winner) {
@@ -28,15 +33,16 @@ const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, 
     const playerText = currentPlayer === 'Black' ? '黒' : '白';
     
     // ボタンの表示設定
-    const options = currentPlayer === 'Black' 
-      ? [
-          { index: 0, label: '90%', disabled: lastBlackStoneIndex === 0 },
-          { index: 1, label: '70%', disabled: false }
-        ]
-      : [
-          { index: 0, label: '30%', disabled: false },
-          { index: 1, label: '10%', disabled: lastWhiteStoneIndex === 1 }
-        ];
+    const isBlack = currentPlayer === 'Black';
+    const options = [
+      { index: 0, label: isBlack ? '90%' : '30%' },
+      { index: 1, label: isBlack ? '70%' : '10%' }
+    ].map(opt => ({
+      ...opt,
+      disabled: isBlack 
+        ? (opt.index === 0 && lastBlackStoneIndex === 0)
+        : (opt.index === 1 && lastWhiteStoneIndex === 1)
+    }));
 
     return (
       <div>

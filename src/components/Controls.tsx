@@ -11,9 +11,11 @@ interface ControlsProps {
   observationCount: number;
   confirmPlacementMode: boolean;
   onToggleConfirmMode: () => void;
+  onUndo: () => void;
+  isCpuTurn?: boolean;
 }
 
-const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode }) => {
+const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn }) => {
   return (
     <div className="controls">
       <button 
@@ -33,6 +35,14 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
           ターン終了
         </button>
       )}
+
+      <button 
+        onClick={onUndo}
+        className="control-button"
+        disabled={isCpuTurn}
+      >
+        待った
+      </button>
 
       <button 
         onClick={onReset}
