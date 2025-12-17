@@ -1,4 +1,5 @@
 import React from 'react';
+import { GameMode } from '../types/game';
 
 interface ControlsProps {
   onObserve: () => void;
@@ -14,9 +15,10 @@ interface ControlsProps {
   onUndo: () => void;
   isCpuTurn?: boolean;
   isReverting: boolean;
+  gameMode: GameMode;
 }
 
-const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn, isReverting }) => {
+const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn, isReverting, gameMode }) => {
   return (
     <div className="controls">
       <button 
@@ -40,7 +42,7 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
       <button 
         onClick={onUndo}
         className="control-button"
-        disabled={isCpuTurn}
+        disabled={isCpuTurn || gameMode === 'Online'}
       >
         待った
       </button>

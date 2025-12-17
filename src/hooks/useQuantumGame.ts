@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState, Player, BoardState, GameMode } from '../types/game';
 import { BOARD_SIZE, STONE_PROBABILITIES } from '../utils/constants';
 import { checkWin, getCpuMove, shouldCpuObserve } from '../utils/gameLogic';
+import { db } from '../firebase';
+import { ref, set, onValue, update, get, onDisconnect } from 'firebase/database';
 
 // 初期状態を生成するヘルパー関数
 const createInitialState = (): GameState => ({
@@ -33,12 +35,38 @@ const performUndo = (currentHistory: GameState[]) => {
   return { state: previousState, history: newHistory };
 };
 
+// 次のターンの状態を計算するヘルパー関数
+const calculateNextTurnState = (currentState: GameState): Partial<GameState> => {
+  const nextPlayer = currentState.currentPlayer === 'Black' ? 'White' : 'Black';
+
+  // 次のプレイヤーのデフォルト選択を決定（制限がある場合は強制的に変更）
+  let nextSelected: 0 | 1 = 0;
+  if (nextPlayer === 'Black') {
+    if (currentState.lastBlackStoneIndex === 0) nextSelected = 1;
+    else nextSelected = 0;
+  } else {
+    // 白のデフォルトは10% (index 1)
+    if (currentState.lastWhiteStoneIndex === 1) nextSelected = 0;
+    else nextSelected = 1;
+  }
+
+  return {
+    currentPlayer: nextPlayer,
+    selectedStoneIndex: nextSelected,
+    isStonePlaced: false, // フラグをリセット
+  };
+};
+
 export const useQuantumGame = () => {
   const [gameState, setGameState] = useState<GameState>(createInitialState);
   const [history, setHistory] = useState<GameState[]>([]);
   const timeoutRef = useRef<number | undefined>(undefined);
   const cpuStateRef = useRef<'thinking' | 'placed' | 'observing'>('thinking');
   const gameStateRef = useRef(gameState);
+  const [roomId, setRoomId] = useState<string>('');
+  const [myColor, setMyColor] = useState<Player | null>(null);
+  const [isOpponentDisconnected, setIsOpponentDisconnected] = useState<boolean>(false);
+  const isHostRef = useRef<boolean>(false);
 
   // 最新のgameStateをRefに保持（イベントリスナー内で参照するため）
   useEffect(() => {
@@ -70,6 +98,158 @@ export const useQuantumGame = () => {
     };
   }, []);
 
+  // オンライン: 部屋に参加・作成
+  const joinRoom = useCallback(async (id: string) => {
+    if (!id) return;
+    const roomRef = ref(db, `rooms/${id}`);
+    const snapshot = await get(roomRef);
+
+    if (!snapshot.exists()) {
+      // 部屋が存在しない場合は作成（ホストになる）
+      const initialState = createInitialState();
+      const roomData = {
+        ...initialState,
+        gameMode: 'Online',
+        status: 'waiting', // 待機中
+        hostColor: null
+      };
+      await set(roomRef, roomData);
+      setRoomId(id);
+      isHostRef.current = true;
+      setMyColor(null); // 対戦相手待ち
+    } else {
+      const data = snapshot.val();
+      if (data.status === 'waiting') {
+        // 待機中の部屋に参加（ゲストになる）
+        // ここでランダムに先攻後攻を決定
+        const hostIsBlack = Math.random() < 0.5;
+        const hostColor = hostIsBlack ? 'Black' : 'White';
+        const guestColor = hostIsBlack ? 'White' : 'Black';
+        
+        await update(roomRef, {
+          status: 'playing',
+          hostColor: hostColor
+        });
+        setRoomId(id);
+        setMyColor(guestColor);
+        isHostRef.current = false;
+      } else {
+        alert('部屋が満員か、既にゲームが進行中です。');
+      }
+    }
+  }, []);
+
+  // オンライン: 状態の同期
+  useEffect(() => {
+    if (!roomId) return;
+    const roomRef = ref(db, `rooms/${roomId}`);
+    const unsubscribe = onValue(roomRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // ローカルの設定（置き間違い防止など）は維持しつつ、ゲーム状態を同期
+        setGameState(prev => ({ ...data, confirmPlacementMode: prev.confirmPlacementMode }));
+        
+        // ホストの場合、ゲーム開始時に自分の色を設定
+        if (isHostRef.current && data.status === 'playing' && !myColor) {
+           setMyColor(data.hostColor);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [roomId, myColor]);
+
+  // オンライン: 接続監視
+  useEffect(() => {
+    if (!roomId || !myColor) return;
+
+    const myConnectionRef = ref(db, `rooms/${roomId}/connections/${myColor}`);
+    const connectedRef = ref(db, '.info/connected');
+
+    const unsubscribeMy = onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        set(myConnectionRef, true);
+        onDisconnect(myConnectionRef).remove();
+      }
+    });
+
+    const opponentColor = myColor === 'Black' ? 'White' : 'Black';
+    const opponentConnectionRef = ref(db, `rooms/${roomId}/connections/${opponentColor}`);
+    
+    let disconnectTimer: number | undefined;
+
+    const unsubscribeOpponent = onValue(opponentConnectionRef, (snap) => {
+      if (snap.exists()) {
+        if (disconnectTimer !== undefined) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = undefined;
+        }
+        setIsOpponentDisconnected(false);
+      } else {
+        if (disconnectTimer === undefined) {
+          disconnectTimer = window.setTimeout(() => {
+            setIsOpponentDisconnected(true);
+          }, 3000);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeMy();
+      unsubscribeOpponent();
+      set(myConnectionRef, null);
+      if (disconnectTimer !== undefined) clearTimeout(disconnectTimer);
+    };
+  }, [roomId, myColor]);
+
+  // 勝負がつかなかった場合の自動遷移処理（観測結果表示 -> 元に戻す -> 次のターン）
+  useEffect(() => {
+    if (!gameState.showNoWinnerMessage) return;
+
+    let revertTimer: number | undefined;
+    let endTurnTimer: number | undefined;
+
+    revertTimer = window.setTimeout(() => {
+      // 1. 盤面を元に戻す
+      const stateAfterObservation = gameStateRef.current;
+      const revertedBoard: BoardState = stateAfterObservation.board.map(row =>
+        row.map(cell => {
+          if (!cell) return null;
+          return { ...cell, observedColor: undefined };
+        })
+      );
+      const revertState = { ...stateAfterObservation, board: revertedBoard, isObserving: false, isReverting: true, showNoWinnerMessage: false };
+      
+      if (stateAfterObservation.gameMode === 'Online') {
+         update(ref(db, `rooms/${roomId}`), revertState);
+      } else {
+         setGameState(revertState);
+      }
+
+      // 2. アニメーション後にターンを終了する
+      endTurnTimer = window.setTimeout(() => {
+        const stateAfterRevert = gameStateRef.current;
+        const nextTurnPartialState = calculateNextTurnState(stateAfterRevert);
+        const nextTurnState = { 
+            ...stateAfterRevert, 
+            isReverting: false, 
+            ...nextTurnPartialState 
+        };
+        
+        if (stateAfterRevert.gameMode === 'Online') {
+            update(ref(db, `rooms/${roomId}`), nextTurnState);
+        } else {
+            setGameState(nextTurnState);
+        }
+      }, 500);
+
+    }, 2000);
+
+    return () => {
+      if (revertTimer) clearTimeout(revertTimer);
+      if (endTurnTimer) clearTimeout(endTurnTimer);
+    };
+  }, [gameState.showNoWinnerMessage, roomId]);
+
   // 石の種類を選択する処理
   const selectStone = useCallback((index: 0 | 1) => {
     setGameState(prev => ({ ...prev, selectedStoneIndex: index }));
@@ -82,6 +262,8 @@ export const useQuantumGame = () => {
 
   // 待った（Undo）機能
   const undo = useCallback(() => {
+    // オンラインモードでは「待った」無効
+    if (gameState.gameMode === 'Online') return;
     if (history.length === 0) return;
     
     let { state: nextState, history: nextHistory } = performUndo(history);
@@ -115,177 +297,178 @@ export const useQuantumGame = () => {
 
   // 石を置く処理
   const placeStone = useCallback((row: number, col: number) => {
-    setGameState(prev => {
-      // ゲームオーバー後、観測中、収縮中、既に石を置いた場合、またはセルに既に石がある場合は何もしない
-      if (prev.isGameOver || prev.isObserving || prev.isCollapsing || prev.isStonePlaced || prev.board[row][col]) {
-        return prev;
-      }
+    const prev = gameStateRef.current;
 
-      // 置き間違い防止モードがONの場合の処理
-      if (prev.confirmPlacementMode) {
-        if (!prev.pendingStone || prev.pendingStone.row !== row || prev.pendingStone.col !== col) {
-          return { ...prev, pendingStone: { row, col } };
-        }
-      }
+    // オンラインの場合、自分のターンでなければ操作不可
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) {
+      return;
+    }
 
-      // 履歴に保存
+    // ゲームオーバー後、観測中、収縮中、既に石を置いた場合、またはセルに既に石がある場合は何もしない
+    if (prev.isGameOver || prev.isObserving || prev.isCollapsing || prev.isStonePlaced || prev.board[row][col]) {
+      return;
+    }
+
+    // 置き間違い防止モードがONの場合の処理
+    if (prev.confirmPlacementMode) {
+      if (!prev.pendingStone || prev.pendingStone.row !== row || prev.pendingStone.col !== col) {
+        setGameState({ ...prev, pendingStone: { row, col } });
+        return;
+      }
+    }
+
+    // 履歴に保存 (オンライン以外)
+    if (prev.gameMode !== 'Online') {
       setHistory(h => [...h, prev]);
+    }
 
-      const newBoard = prev.board.map(r => [...r]);
-      const probability = STONE_PROBABILITIES[prev.currentPlayer][prev.selectedStoneIndex];
+    const newBoard = prev.board.map(r => [...r]);
+    const probability = STONE_PROBABILITIES[prev.currentPlayer][prev.selectedStoneIndex];
 
-      // 新しい石を置く
-      newBoard[row][col] = { probability };
+    // 新しい石を置く
+    newBoard[row][col] = { probability };
 
-      // 最後に置いた石の情報を更新
-      const newLastBlack = prev.currentPlayer === 'Black' ? prev.selectedStoneIndex : prev.lastBlackStoneIndex;
-      const newLastWhite = prev.currentPlayer === 'White' ? prev.selectedStoneIndex : prev.lastWhiteStoneIndex;
+    // 最後に置いた石の情報を更新
+    const newLastBlack = prev.currentPlayer === 'Black' ? prev.selectedStoneIndex : prev.lastBlackStoneIndex;
+    const newLastWhite = prev.currentPlayer === 'White' ? prev.selectedStoneIndex : prev.lastWhiteStoneIndex;
 
-      return {
-        ...prev,
-        board: newBoard,
-        lastBlackStoneIndex: newLastBlack,
-        lastWhiteStoneIndex: newLastWhite,
-        isStonePlaced: true, // 石を置いたフラグを立てる（ターンはまだ交代しない）
-        pendingStone: null,
-      };
-    });
-  }, []);
+    const newState = {
+      ...prev,
+      board: newBoard,
+      lastBlackStoneIndex: newLastBlack,
+      lastWhiteStoneIndex: newLastWhite,
+      isStonePlaced: true, // 石を置いたフラグを立てる（ターンはまだ交代しない）
+      pendingStone: null,
+    };
+
+    // オンラインならDB更新
+    if (prev.gameMode === 'Online') {
+      update(ref(db, `rooms/${roomId}`), newState);
+    } else {
+      setGameState(newState);
+    }
+  }, [roomId, myColor]);
 
   // ターン終了処理
   const endTurn = useCallback(() => {
-    setGameState(prev => {
-      // 履歴に保存
+    const prev = gameStateRef.current;
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) return;
+
+    // 履歴に保存 (オンライン以外)
+    if (prev.gameMode !== 'Online') {
       setHistory(h => [...h, prev]);
+    }
 
-      const nextPlayer = prev.currentPlayer === 'Black' ? 'White' : 'Black';
+    const nextTurnPartialState = calculateNextTurnState(prev);
 
-      // 次のプレイヤーのデフォルト選択を決定（制限がある場合は強制的に変更）
-      let nextSelected: 0 | 1 = 0;
-      if (nextPlayer === 'Black') {
-        if (prev.lastBlackStoneIndex === 0) nextSelected = 1;
-        else nextSelected = 0;
-      } else {
-        // 白のデフォルトは10% (index 1)
-        if (prev.lastWhiteStoneIndex === 1) nextSelected = 0;
-        else nextSelected = 1;
-      }
+    const newState = {
+      ...prev,
+      ...nextTurnPartialState,
+    };
 
-      return {
-        ...prev,
-        currentPlayer: nextPlayer,
-        selectedStoneIndex: nextSelected,
-        isStonePlaced: false, // フラグをリセット
-      };
-    });
-  }, []);
+    if (prev.gameMode === 'Online') {
+      update(ref(db, `rooms/${roomId}`), newState);
+    } else {
+      setGameState(newState);
+    }
+  }, [roomId, myColor]);
 
   // 観測処理
   const observeBoard = useCallback(() => {
+    const currentGameState = gameStateRef.current;
     // 既にゲームオーバーや収縮中の場合は何もしない
-    if (gameState.isGameOver || gameState.isCollapsing) return;
+    if (currentGameState.isGameOver || currentGameState.isCollapsing) return;
+
+    // オンラインの場合、自分のターンでなければ操作不可
+    if (currentGameState.gameMode === 'Online' && currentGameState.currentPlayer !== myColor) return;
 
     // 石を置いていない場合、または既に観測中（結果表示中）の場合は観測できない
-    if (!gameState.isStonePlaced || gameState.isObserving) return;
+    if (!currentGameState.isStonePlaced || currentGameState.isObserving) return;
 
     // 観測回数のチェック
-    const currentCount = gameState.currentPlayer === 'Black' ? gameState.blackObservationCount : gameState.whiteObservationCount;
+    const currentCount = currentGameState.currentPlayer === 'Black' ? currentGameState.blackObservationCount : currentGameState.whiteObservationCount;
     if (currentCount <= 0) return;
 
-    // 履歴に保存
-    setHistory(h => [...h, gameState]);
+    // 履歴に保存 (オンライン以外)
+    if (currentGameState.gameMode !== 'Online') {
+      setHistory(h => [...h, currentGameState]);
+    }
+
+    // オンラインの場合は、ここでDBに「観測開始フラグ」を送る手もあるが、
+    // シンプルに計算結果を送信する方式をとるため、まずはローカルで計算して結果を送る。
+    // ただし、アニメーション同期のために isCollapsing を先に送るのが理想だが、
+    // 簡易実装として、計算結果を即座にDBに反映し、両者でアニメーションさせる。
 
     // 観測開始：まずは収縮アニメーションを開始
-    setGameState(prev => ({
-      ...prev,
-      isCollapsing: true,
-    }));
+    const collapsingState = { ...currentGameState, isCollapsing: true };
+    if (currentGameState.gameMode === 'Online') {
+      update(ref(db, `rooms/${roomId}`), collapsingState);
+    } else {
+      setGameState(collapsingState);
+    }
 
     // 既存のタイマーがあればクリア
     if (timeoutRef.current !== undefined) clearTimeout(timeoutRef.current);
 
     // 1秒後に結果を確定させる
     timeoutRef.current = window.setTimeout(() => {
-      setGameState(prev => {
-        // リセットなどで状況が変わっていたら中断
-        if (!prev.isCollapsing) return prev;
+      const prev = gameStateRef.current; // Get latest state
+      // リセットなどで状況が変わっていたら中断
+      if (!prev.isCollapsing) return;
 
-        const observedBoard: BoardState = prev.board.map(row =>
-          row.map(cell => {
-            if (!cell) return null;
-            // 確率に基づいて色を決定
-            const observedColor = (Math.random() < cell.probability ? 'Black' : 'White') as Player;
-            return { ...cell, observedColor };
-          })
-        );
+      const observedBoard: BoardState = prev.board.map(row =>
+        row.map(cell => {
+          if (!cell) return null;
+          // 確率に基づいて色を決定
+          const observedColor = (Math.random() < cell.probability ? 'Black' : 'White') as Player;
+          return { ...cell, observedColor };
+        })
+      );
 
-        const { winner, winningLine } = checkWin(observedBoard, prev.currentPlayer);
+      const { winner, winningLine } = checkWin(observedBoard, prev.currentPlayer);
 
-        // 観測回数を減らす
-        const newBlackCount = prev.currentPlayer === 'Black' ? prev.blackObservationCount - 1 : prev.blackObservationCount;
-        const newWhiteCount = prev.currentPlayer === 'White' ? prev.whiteObservationCount - 1 : prev.whiteObservationCount;
+      // 観測回数を減らす
+      const newBlackCount = prev.currentPlayer === 'Black' ? prev.blackObservationCount - 1 : prev.blackObservationCount;
+      const newWhiteCount = prev.currentPlayer === 'White' ? prev.whiteObservationCount - 1 : prev.whiteObservationCount;
 
-        if (winner) {
-          return {
-            ...prev,
-            board: observedBoard,
-            winner: winner,
-            isGameOver: true,
-            winningLine: winningLine,
-            isObserving: false,
-            isCollapsing: false,
-            showNoWinnerMessage: false,
-            blackObservationCount: newBlackCount,
-            whiteObservationCount: newWhiteCount,
-          };
-        } else {
-          // 勝負がつかなかった場合 -> 自動で元に戻してターン終了
-          timeoutRef.current = window.setTimeout(() => {
-            setGameState(prevState => {
-              const revertedBoard = prevState.board.map(row =>
-                row.map(cell => {
-                  if (!cell) return null;
-                  return { ...cell, observedColor: undefined };
-                })
-              );
-              return { ...prevState, board: revertedBoard, isObserving: false, isReverting: true, showNoWinnerMessage: false };
-            });
+      let newState;
+      if (winner) {
+        newState = {
+          ...prev,
+          board: observedBoard,
+          winner: winner,
+          isGameOver: true,
+          winningLine: winningLine,
+          isObserving: false,
+          isCollapsing: false,
+          showNoWinnerMessage: false,
+          blackObservationCount: newBlackCount,
+          whiteObservationCount: newWhiteCount,
+        };
+      } else {
+        newState = {
+          ...prev,
+          board: observedBoard,
+          winner: null,
+          isGameOver: false,
+          winningLine: null,
+          isObserving: true,
+          isCollapsing: false,
+          showNoWinnerMessage: true,
+          blackObservationCount: newBlackCount,
+          whiteObservationCount: newWhiteCount,
+        };
+      }
 
-            timeoutRef.current = window.setTimeout(() => {
-              setGameState(prevState => {
-                const nextPlayer = prevState.currentPlayer === 'Black' ? 'White' : 'Black';
-                let nextSelected: 0 | 1 = 0;
-                if (nextPlayer === 'Black') {
-                  if (prevState.lastBlackStoneIndex === 0) nextSelected = 1;
-                  else nextSelected = 0;
-                } else {
-                  if (prevState.lastWhiteStoneIndex === 1) nextSelected = 0;
-                  else nextSelected = 1;
-                }
-                return { ...prevState, isReverting: false, currentPlayer: nextPlayer, selectedStoneIndex: nextSelected, isStonePlaced: false };
-              });
-              timeoutRef.current = undefined;
-            }, 500);
-          }, 2000);
-
-          return {
-            ...prev,
-            board: observedBoard,
-            winner: null,
-            isGameOver: false,
-            winningLine: null,
-            isObserving: true,
-            isCollapsing: false,
-            showNoWinnerMessage: true,
-            blackObservationCount: newBlackCount,
-            whiteObservationCount: newWhiteCount,
-          };
-        }
-      });
+      if (prev.gameMode === 'Online') {
+          update(ref(db, `rooms/${roomId}`), newState);
+      } else {
+          setGameState(newState);
+      }
       timeoutRef.current = undefined;
     }, 1000); // 1秒間パラパラさせる
 
-  }, [gameState]);
+  }, [gameState, roomId, myColor]);
 
   // ゲームリセット処理
   const resetGame = useCallback((mode?: GameMode, cpuColor?: Player | null) => {
@@ -299,13 +482,15 @@ export const useQuantumGame = () => {
       cpuColor: cpuColor !== undefined ? cpuColor : prev.cpuColor // CPUの色指定
     }));
     setHistory([]);
+    setRoomId(''); // 部屋から退出
+    setMyColor(null);
+    setIsOpponentDisconnected(false);
   }, []);
 
   // CPUのターン処理
   useEffect(() => {
     // 条件チェック: PvEモード、CPUのターン、ゲーム進行中、アニメーション中でない
     const { gameMode, currentPlayer, cpuColor, isGameOver, isCollapsing, isStonePlaced, isObserving, blackObservationCount, whiteObservationCount, isReverting } = gameState;
-
     if (gameMode !== 'PvE' || currentPlayer !== cpuColor || isGameOver || isCollapsing || isReverting) {
       return;
     }
@@ -317,45 +502,46 @@ export const useQuantumGame = () => {
       // 思考時間（1秒）
       timer = window.setTimeout(() => {
         cpuStateRef.current = 'placed';
-
+        
+        const currentState = gameStateRef.current;
+        
         // 履歴に保存
-        setHistory(h => [...h, gameState]);
+        setHistory(h => [...h, currentState]);
 
-        setGameState(prev => {
-          // 1. 石の選択
-          const isCpuBlack = prev.currentPlayer === 'Black';
-          const lastCpuIndex = isCpuBlack ? prev.lastBlackStoneIndex : prev.lastWhiteStoneIndex;
-          let selectedIndex: 0 | 1 = 0;
+        // 1. 石の選択
+        const isCpuBlack = currentState.currentPlayer === 'Black';
+        const lastCpuIndex = isCpuBlack ? currentState.lastBlackStoneIndex : currentState.lastWhiteStoneIndex;
+        let selectedIndex: 0 | 1 = 0;
 
-          if (isCpuBlack) {
-             // 黒: 0 (90%) は連続不可
-             if (lastCpuIndex === 0) selectedIndex = 1;
-             else selectedIndex = Math.random() < 0.5 ? 0 : 1;
-          } else {
-             // 白: 1 (10%) は連続不可
-             if (lastCpuIndex === 1) selectedIndex = 0;
-             else selectedIndex = Math.random() < 0.5 ? 0 : 1;
-          }
+        if (isCpuBlack) {
+            // 黒: 0 (90%) は連続不可
+            if (lastCpuIndex === 0) selectedIndex = 1;
+            else selectedIndex = Math.random() < 0.5 ? 0 : 1;
+        } else {
+            // 白: 1 (10%) は連続不可
+            if (lastCpuIndex === 1) selectedIndex = 0;
+            else selectedIndex = Math.random() < 0.5 ? 0 : 1;
+        }
 
-          // 2. 場所の選択 (指向性あり)
-          const target = getCpuMove(prev.board);
-          if (!target) return prev;
+        // 2. 場所の選択 (指向性あり)
+        const target = getCpuMove(currentState.board);
+        if (!target) return;
 
-          const newBoard = prev.board.map(r => [...r]);
-          const probability = STONE_PROBABILITIES[prev.currentPlayer][selectedIndex];
-          newBoard[target.r][target.c] = { probability };
+        const newBoard = currentState.board.map(r => [...r]);
+        const probability = STONE_PROBABILITIES[currentState.currentPlayer][selectedIndex];
+        newBoard[target.r][target.c] = { probability };
 
-          const newLastBlack = isCpuBlack ? selectedIndex : prev.lastBlackStoneIndex;
-          const newLastWhite = !isCpuBlack ? selectedIndex : prev.lastWhiteStoneIndex;
+        const newLastBlack = isCpuBlack ? selectedIndex : currentState.lastBlackStoneIndex;
+        const newLastWhite = !isCpuBlack ? selectedIndex : currentState.lastWhiteStoneIndex;
 
-          return {
-            ...prev,
-            board: newBoard,
-            lastBlackStoneIndex: newLastBlack,
-            lastWhiteStoneIndex: newLastWhite,
-            isStonePlaced: true, // 石を置いた状態にする
-          };
-        });
+        const newState = {
+          ...currentState,
+          board: newBoard,
+          lastBlackStoneIndex: newLastBlack,
+          lastWhiteStoneIndex: newLastWhite,
+          isStonePlaced: true, // 石を置いた状態にする
+        };
+        setGameState(newState);
       }, 1000);
     }
 
@@ -365,7 +551,7 @@ export const useQuantumGame = () => {
       if (cpuStateRef.current === 'placed') {
         timer = window.setTimeout(() => {
           const cpuObsCount = currentPlayer === 'Black' ? blackObservationCount : whiteObservationCount;
-          if (shouldCpuObserve(gameState.board, currentPlayer, cpuObsCount)) {
+          if (shouldCpuObserve(gameStateRef.current.board, currentPlayer, cpuObsCount)) {
             cpuStateRef.current = 'observing';
             observeBoard();
           } else {
@@ -385,6 +571,10 @@ export const useQuantumGame = () => {
     gameState,
     placeStone,
     endTurn,
+    joinRoom,
+    roomId,
+    myColor,
+    isOpponentDisconnected,
     selectStone,
     toggleConfirmMode,
     undo,

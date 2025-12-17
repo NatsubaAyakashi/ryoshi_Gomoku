@@ -1,5 +1,5 @@
 // ゲームモード
-export type GameMode = 'PvP' | 'PvE';
+export type GameMode = 'PvP' | 'PvE' | 'Online';
 
 // プレイヤーの種類
 export type Player = 'Black' | 'White';
@@ -52,4 +52,8 @@ export interface GameState {
   winningLine: { row: number, col: number }[] | null;
   // 盤面復元アニメーション中かどうか
   isReverting: boolean;
+  // オンライン対戦の状態 ('waiting' | 'playing' など)
+  status?: string;
+  // オンライン対戦のホストの色
+  hostColor?: Player | null;
 }

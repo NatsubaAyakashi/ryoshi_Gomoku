@@ -6,10 +6,11 @@ import RuleModal from './components/RuleModal';
 import { useQuantumGame } from './hooks/useQuantumGame';
 
 const App: React.FC = () => {
-  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, undo, observeBoard, resetGame } = useQuantumGame();
+  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, undo, observeBoard, resetGame, joinRoom, roomId, myColor } = useQuantumGame();
   const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount, confirmPlacementMode, pendingStone, gameMode, cpuColor, winningLine, isReverting } = gameState;
 
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [inputRoomId, setInputRoomId] = useState('');
 
   const isCpuTurn = gameMode === 'PvE' && currentPlayer === cpuColor;
 
@@ -23,28 +24,54 @@ const App: React.FC = () => {
       <div className="game-layout">
         <Board board={board} onCellClick={placeStone} isCollapsing={isCollapsing} pendingStone={pendingStone} winningLine={winningLine} isReverting={isReverting} />
         <div className="sidebar">
-          <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-            <button 
-              className="control-button" 
-              style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: gameState.gameMode === 'PvP' ? 1 : 0.5 }}
-              onClick={() => resetGame('PvP', null)}
-            >
-              PvP
-            </button>
-            <button 
-              className="control-button" 
-              style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: (gameState.gameMode === 'PvE' && gameState.cpuColor === 'White') ? 1 : 0.5 }}
-              onClick={() => resetGame('PvE', 'White')}
-            >
-              PvE (先攻)
-            </button>
-            <button 
-              className="control-button" 
-              style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: (gameState.gameMode === 'PvE' && gameState.cpuColor === 'Black') ? 1 : 0.5 }}
-              onClick={() => resetGame('PvE', 'Black')}
-            >
-              PvE (後攻)
-            </button>
+          <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button 
+                className="control-button" 
+                style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: gameState.gameMode === 'PvP' ? 1 : 0.5 }}
+                onClick={() => resetGame('PvP', null)}
+              >
+                PvP
+              </button>
+              <button 
+                className="control-button" 
+                style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: (gameState.gameMode === 'PvE' && gameState.cpuColor === 'White') ? 1 : 0.5 }}
+                onClick={() => resetGame('PvE', 'White')}
+              >
+                PvE (先攻)
+              </button>
+              <button 
+                className="control-button" 
+                style={{ fontSize: '0.8rem', padding: '0.5rem', opacity: (gameState.gameMode === 'PvE' && gameState.cpuColor === 'Black') ? 1 : 0.5 }}
+                onClick={() => resetGame('PvE', 'Black')}
+              >
+                PvE (後攻)
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+              <input 
+                type="text" 
+                placeholder="合言葉" 
+                value={inputRoomId}
+                onChange={(e) => setInputRoomId(e.target.value)}
+                style={{ padding: '0.5rem', width: '100px' }}
+                disabled={!!roomId}
+              />
+              <button 
+                className="control-button" 
+                style={{ fontSize: '0.8rem', padding: '0.5rem', flex: 1, backgroundColor: roomId ? '#666' : undefined }}
+                onClick={() => joinRoom(inputRoomId)}
+                disabled={!!roomId || !inputRoomId}
+              >
+                {roomId ? '入室中' : 'オンライン'}
+              </button>
+            </div>
+            {roomId && (
+               <div style={{ color: '#ffd700', fontSize: '0.9rem' }}>
+                 {gameState.status === 'waiting' ? '対戦相手を待っています...' : `対戦中: あなたは${myColor === 'Black' ? '黒' : '白'}です`}
+               </div>
+            )}
           </div>
           <GameInfo
             currentPlayer={currentPlayer}
@@ -72,6 +99,7 @@ const App: React.FC = () => {
             onUndo={undo}
             isCpuTurn={isCpuTurn}
             isReverting={isReverting}
+            gameMode={gameMode}
           />
         </div>
       </div>
