@@ -409,3 +409,24 @@ h2 {
   border-radius: 4px;
   cursor: pointer;
 }
+
+/* モバイル用調整（上書き用） */
+@media (max-width: 768px) {
+  .header-container {
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .rules-btn {
+    position: static;
+    width: 100%;
+    background-color: #333;
+    padding: 10px;
+  }
+
+  .modal-content {
+    padding: 1rem;
+    width: 95%;
+  }
+}
