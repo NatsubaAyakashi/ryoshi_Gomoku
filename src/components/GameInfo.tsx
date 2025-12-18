@@ -1,5 +1,5 @@
 import React from 'react';
-import { Player } from '../types/game';
+import { Player, GameMode } from '../types/game';
 
 interface GameInfoProps {
   currentPlayer: Player;
@@ -13,9 +13,11 @@ interface GameInfoProps {
   blackObservationCount: number;
   whiteObservationCount: number;
   isInteractive: boolean;
+  gameMode: GameMode;
+  myColor: Player | null;
 }
 
-const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, onSelectStone, winner, isGameOver, showNoWinnerMessage, blackObservationCount, whiteObservationCount, isInteractive }) => {
+const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, onSelectStone, winner, isGameOver, showNoWinnerMessage, blackObservationCount, whiteObservationCount, isInteractive, gameMode, myColor }) => {
   const getMessage = () => {
     if (showNoWinnerMessage) {
       return (
@@ -45,6 +47,13 @@ const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, 
         : (opt.index === 1 && lastWhiteStoneIndex === 1) || !isInteractive
     }));
 
+    let selectionLabel = "石の種類を選択 (黒になる確率):";
+    if (gameMode === 'Online' && myColor && currentPlayer !== myColor) {
+       selectionLabel = `相手(${playerText})の石 (黒になる確率):`;
+    } else if (!isInteractive) {
+       selectionLabel = "選択中の石 (黒になる確率):";
+    }
+
     return (
       <div>
         <h2>現在のターン: {playerText}</h2>
@@ -52,7 +61,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, 
           <p>黒の観測残り: {blackObservationCount}回</p>
           <p>白の観測残り: {whiteObservationCount}回</p>
         </div>
-        <p>石の種類を選択 (黒になる確率):</p>
+        <p>{selectionLabel}</p>
         <div className="prob-button-container" style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
           {options.map((opt) => (
             <button

@@ -245,11 +245,23 @@ export const useQuantumGame = () => {
     return () => clearTimeout(timer);
   }, [gameState.isReverting, roomId]);
 
+  // 現在の状態から「自分の色」を推定するヘルパー関数
+  const getEffectiveMyColor = useCallback((currentState: GameState) => {
+    if (myColor) return myColor;
+    if (currentState.gameMode === 'Online' && currentState.hostColor) {
+      if (isHostRef.current) return currentState.hostColor;
+      return currentState.hostColor === 'Black' ? 'White' : 'Black';
+    }
+    return null;
+  }, [myColor]);
+
   // 石の種類を選択する処理
   const selectStone = useCallback((index: 0 | 1) => {
     const prev = gameStateRef.current;
+    const effectiveColor = getEffectiveMyColor(prev);
+
     // オンラインの場合、自分のターンでなければ操作不可
-    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) {
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== effectiveColor) {
       return;
     }
     setGameState(prev => ({ ...prev, selectedStoneIndex: index }));
@@ -299,15 +311,7 @@ export const useQuantumGame = () => {
   const placeStone = useCallback((row: number, col: number) => {
     const prev = gameStateRef.current;
 
-    // myColorが未設定の場合のフォールバック（ホスト/ゲスト判定から色を推定）
-    let effectiveMyColor = myColor;
-    if (!effectiveMyColor && prev.gameMode === 'Online' && prev.hostColor) {
-      if (isHostRef.current) {
-        effectiveMyColor = prev.hostColor;
-      } else {
-        effectiveMyColor = prev.hostColor === 'Black' ? 'White' : 'Black';
-      }
-    }
+    const effectiveMyColor = getEffectiveMyColor(prev);
 
     // オンラインの場合、自分のターンでなければ操作不可
     if (prev.gameMode === 'Online' && prev.currentPlayer !== effectiveMyColor) {
@@ -362,7 +366,8 @@ export const useQuantumGame = () => {
   // ターン終了処理
   const endTurn = useCallback(() => {
     const prev = gameStateRef.current;
-    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) return;
+    const effectiveColor = getEffectiveMyColor(prev);
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== effectiveColor) return;
 
     // 履歴に保存 (オンライン以外)
     if (prev.gameMode !== 'Online') {
@@ -386,11 +391,12 @@ export const useQuantumGame = () => {
   // 観測処理
   const observeBoard = useCallback(() => {
     const currentGameState = gameStateRef.current;
+    const effectiveColor = getEffectiveMyColor(currentGameState);
     // 既にゲームオーバーや収縮中の場合は何もしない
     if (currentGameState.isGameOver || currentGameState.isCollapsing) return;
 
     // オンラインの場合、自分のターンでなければ操作不可
-    if (currentGameState.gameMode === 'Online' && currentGameState.currentPlayer !== myColor) return;
+    if (currentGameState.gameMode === 'Online' && currentGameState.currentPlayer !== effectiveColor) return;
 
     // 石を置いていない場合、または既に観測中（結果表示中）の場合は観測できない
     if (!currentGameState.isStonePlaced || currentGameState.isObserving) return;
@@ -577,13 +583,16 @@ export const useQuantumGame = () => {
     };
   }, [gameState, endTurn, observeBoard]); // gameState全体を監視
 
+  // UI側に返すmyColorも、推定済みのものを返す（ボタンの活性/非活性判定用）
+  const exposedMyColor = getEffectiveMyColor(gameState);
+
   return {
     gameState,
     placeStone,
     endTurn,
     joinRoom,
     roomId,
-    myColor,
+    myColor: exposedMyColor,
     isOpponentDisconnected,
     selectStone,
     toggleConfirmMode,

@@ -107,6 +107,8 @@ const App: React.FC = () => {
             blackObservationCount={blackObservationCount}
             whiteObservationCount={whiteObservationCount}
             isInteractive={canControl}
+            gameMode={gameMode}
+            myColor={myColor}
           />
           <Controls
             onObserve={observeBoard}
