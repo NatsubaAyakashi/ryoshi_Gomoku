@@ -214,8 +214,13 @@ export const useQuantumGame = () => {
 
   // 石の種類を選択する処理
   const selectStone = useCallback((index: 0 | 1) => {
+    const prev = gameStateRef.current;
+    // オンラインの場合、自分のターンでなければ操作不可
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) {
+      return;
+    }
     setGameState(prev => ({ ...prev, selectedStoneIndex: index }));
-  }, []);
+  }, [myColor]);
 
   // 置き間違い防止モードの切り替え
   const toggleConfirmMode = useCallback(() => {
@@ -261,8 +266,18 @@ export const useQuantumGame = () => {
   const placeStone = useCallback((row: number, col: number) => {
     const prev = gameStateRef.current;
 
+    // myColorが未設定の場合のフォールバック（ホスト/ゲスト判定から色を推定）
+    let effectiveMyColor = myColor;
+    if (!effectiveMyColor && prev.gameMode === 'Online' && prev.hostColor) {
+      if (isHostRef.current) {
+        effectiveMyColor = prev.hostColor;
+      } else {
+        effectiveMyColor = prev.hostColor === 'Black' ? 'White' : 'Black';
+      }
+    }
+
     // オンラインの場合、自分のターンでなければ操作不可
-    if (prev.gameMode === 'Online' && prev.currentPlayer !== myColor) {
+    if (prev.gameMode === 'Online' && prev.currentPlayer !== effectiveMyColor) {
       return;
     }
 

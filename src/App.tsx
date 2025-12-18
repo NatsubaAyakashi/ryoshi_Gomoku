@@ -6,13 +6,17 @@ import RuleModal from './components/RuleModal';
 import { useQuantumGame } from './hooks/useQuantumGame';
 
 const App: React.FC = () => {
-  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, undo, observeBoard, resetGame, joinRoom, roomId, myColor } = useQuantumGame();
+  const { gameState, placeStone, endTurn, selectStone, toggleConfirmMode, undo, observeBoard, resetGame, joinRoom, roomId, myColor, isOpponentDisconnected } = useQuantumGame();
   const { board, currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, winner, isGameOver, isObserving, isCollapsing, showNoWinnerMessage, isStonePlaced, blackObservationCount, whiteObservationCount, confirmPlacementMode, pendingStone, gameMode, cpuColor, winningLine, isReverting } = gameState;
 
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [inputRoomId, setInputRoomId] = useState('');
 
-  const isCpuTurn = gameMode === 'PvE' && currentPlayer === cpuColor;
+  // プレイヤーが操作可能かどうか
+  const canControl = 
+    gameMode === 'Online' ? currentPlayer === myColor :
+    gameMode === 'PvE' ? currentPlayer !== cpuColor :
+    true; // PvP
 
   return (
     <div className="app-container">
@@ -69,7 +73,25 @@ const App: React.FC = () => {
             </div>
             {roomId && (
                <div className="status-message">
-                 {gameState.status === 'waiting' ? '対戦相手を待っています...' : `対戦中: あなたは${myColor === 'Black' ? '黒' : '白'}です`}
+                 {isOpponentDisconnected ? (
+                   <span style={{ color: '#ff4444', fontWeight: 'bold' }}>対戦相手が切断されました</span>
+                 ) : (
+                   gameState.status === 'waiting' ? '対戦相手を待っています...' : (
+                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                       <div>対戦中: あなたは{myColor === 'Black' ? '黒' : '白'}です</div>
+                       <div style={{ 
+                         marginTop: '5px', 
+                         padding: '4px 8px', 
+                         borderRadius: '4px', 
+                         backgroundColor: canControl ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 152, 0, 0.2)',
+                         color: canControl ? '#4CAF50' : '#ff9800',
+                         fontWeight: 'bold'
+                       }}>
+                         {canControl ? 'あなたの番です' : '相手の番です'}
+                       </div>
+                     </div>
+                   )
+                 )}
                </div>
             )}
           </div>
@@ -84,6 +106,7 @@ const App: React.FC = () => {
             showNoWinnerMessage={showNoWinnerMessage}
             blackObservationCount={blackObservationCount}
             whiteObservationCount={whiteObservationCount}
+            isInteractive={canControl}
           />
           <Controls
             onObserve={observeBoard}
@@ -97,9 +120,9 @@ const App: React.FC = () => {
             confirmPlacementMode={confirmPlacementMode}
             onToggleConfirmMode={toggleConfirmMode}
             onUndo={undo}
-            isCpuTurn={isCpuTurn}
             isReverting={isReverting}
             gameMode={gameMode}
+            isInteractive={canControl}
           />
         </div>
       </div>

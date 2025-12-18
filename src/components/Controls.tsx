@@ -13,17 +13,17 @@ interface ControlsProps {
   confirmPlacementMode: boolean;
   onToggleConfirmMode: () => void;
   onUndo: () => void;
-  isCpuTurn?: boolean;
   isReverting: boolean;
   gameMode: GameMode;
+  isInteractive: boolean;
 }
 
-const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isCpuTurn, isReverting, gameMode }) => {
+const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGameOver, isObserving, isCollapsing, isStonePlaced, observationCount, confirmPlacementMode, onToggleConfirmMode, onUndo, isReverting, gameMode, isInteractive }) => {
   return (
     <div className="controls">
       <button 
         onClick={onObserve} 
-        disabled={isGameOver || isCollapsing || (!isStonePlaced && !isObserving) || (observationCount <= 0 && !isObserving)}
+        disabled={!isInteractive || isGameOver || isCollapsing || (!isStonePlaced && !isObserving) || (observationCount <= 0 && !isObserving)}
         className="control-button"
       >
         {isObserving ? "元に戻す" : `観測する (残り${observationCount}回)`}
@@ -34,6 +34,7 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
           onClick={onEndTurn}
           className="control-button"
           style={{ backgroundColor: '#4CAF50', color: 'white' }}
+          disabled={!isInteractive}
         >
           ターン終了
         </button>
@@ -42,7 +43,7 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
       <button 
         onClick={onUndo}
         className="control-button"
-        disabled={isCpuTurn || gameMode === 'Online'}
+        disabled={!isInteractive || gameMode === 'Online'}
       >
         待った
       </button>
@@ -50,6 +51,7 @@ const Controls: React.FC<ControlsProps> = ({ onObserve, onEndTurn, onReset, isGa
       <button 
         onClick={onReset}
         className="control-button"
+        disabled={gameMode === 'Online'}
       >
         リセット
       </button>

@@ -12,9 +12,10 @@ interface GameInfoProps {
   showNoWinnerMessage: boolean;
   blackObservationCount: number;
   whiteObservationCount: number;
+  isInteractive: boolean;
 }
 
-const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, onSelectStone, winner, isGameOver, showNoWinnerMessage, blackObservationCount, whiteObservationCount }) => {
+const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, lastBlackStoneIndex, lastWhiteStoneIndex, onSelectStone, winner, isGameOver, showNoWinnerMessage, blackObservationCount, whiteObservationCount, isInteractive }) => {
   const getMessage = () => {
     if (showNoWinnerMessage) {
       return (
@@ -40,8 +41,8 @@ const GameInfo: React.FC<GameInfoProps> = ({ currentPlayer, selectedStoneIndex, 
     ].map(opt => ({
       ...opt,
       disabled: isBlack 
-        ? (opt.index === 0 && lastBlackStoneIndex === 0)
-        : (opt.index === 1 && lastWhiteStoneIndex === 1)
+        ? (opt.index === 0 && lastBlackStoneIndex === 0) || !isInteractive
+        : (opt.index === 1 && lastWhiteStoneIndex === 1) || !isInteractive
     }));
 
     return (
