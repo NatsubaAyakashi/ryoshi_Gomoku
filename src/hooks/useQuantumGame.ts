@@ -105,7 +105,7 @@ export const useQuantumGame = () => {
         const syncedBoard = data.board 
           ? initialBoard.map((row, r) => 
               data.board[r] 
-                ? row.map((cell, c) => data.board[r][c] || null)
+                ? row.map((_, c) => data.board[r][c] || null)
                 : row
             )
           : initialBoard;
