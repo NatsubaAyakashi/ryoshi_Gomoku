@@ -58,7 +58,7 @@ export const useQuantumGame = () => {
         const initialState = createInitialState();
         const roomData = {
           ...initialState,
-          gameMode: 'Online',
+          gameMode: 'Online' as GameMode,
           status: 'waiting', // 待機中
           hostColor: null,
           connections: { host: true } // 初期接続状態
@@ -67,6 +67,13 @@ export const useQuantumGame = () => {
         setRoomId(id);
         isHostRef.current = true;
         setMyColor(null); // 対戦相手待ち
+
+        // ローカル状態も即座に更新（同期待ちによる不整合を防ぐ）
+        setGameState(prev => ({
+          ...prev,
+          gameMode: 'Online',
+          status: 'waiting'
+        }));
       };
 
       if (!snapshot.exists()) {
@@ -93,6 +100,14 @@ export const useQuantumGame = () => {
             setRoomId(id);
             setMyColor(guestColor);
             isHostRef.current = false;
+
+            // ローカル状態も即座に更新
+            setGameState(prev => ({
+              ...prev,
+              gameMode: 'Online',
+              status: 'playing',
+              hostColor: hostColor
+            }));
           }
         } else {
           // ゲーム進行中の場合でも、両方のプレイヤーがいない場合は部屋をリセット
@@ -357,6 +372,7 @@ export const useQuantumGame = () => {
 
     // オンラインならDB更新
     if (prev.gameMode === 'Online') {
+      if (!roomId) return;
       update(ref(db, `rooms/${roomId}`), newState);
     } else {
       setGameState(newState);
