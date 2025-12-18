@@ -222,7 +222,8 @@ export const useQuantumGame = () => {
       const revertedBoard: BoardState = stateAfterObservation.board.map(row =>
         row.map(cell => {
           if (!cell) return null;
-          return { ...cell, observedColor: undefined };
+          const { observedColor, ...rest } = cell;
+          return rest;
         })
       );
       const revertState = { ...stateAfterObservation, board: revertedBoard, isObserving: false, isReverting: true, showNoWinnerMessage: false };
@@ -376,7 +377,9 @@ export const useQuantumGame = () => {
     // オンラインならDB更新
     if (prev.gameMode === 'Online') {
       if (!roomId) return;
-      update(ref(db, `rooms/${roomId}`), newState).catch(console.error);
+      // undefinedが含まれているとFirebaseがエラーになるため、JSON変換で除去する
+      const cleanState = JSON.parse(JSON.stringify(newState));
+      update(ref(db, `rooms/${roomId}`), cleanState).catch(console.error);
     }
   }, [roomId, myColor]);
 
@@ -402,7 +405,8 @@ export const useQuantumGame = () => {
     setGameState(newState);
 
     if (prev.gameMode === 'Online') {
-      update(ref(db, `rooms/${roomId}`), newState).catch(console.error);
+      const cleanState = JSON.parse(JSON.stringify(newState));
+      update(ref(db, `rooms/${roomId}`), cleanState).catch(console.error);
     }
   }, [roomId, myColor]);
 
