@@ -101,41 +101,46 @@ export const useQuantumGame = () => {
   // オンライン: 部屋に参加・作成
   const joinRoom = useCallback(async (id: string) => {
     if (!id) return;
-    const roomRef = ref(db, `rooms/${id}`);
-    const snapshot = await get(roomRef);
+    try {
+      const roomRef = ref(db, `rooms/${id}`);
+      const snapshot = await get(roomRef);
 
-    if (!snapshot.exists()) {
-      // 部屋が存在しない場合は作成（ホストになる）
-      const initialState = createInitialState();
-      const roomData = {
-        ...initialState,
-        gameMode: 'Online',
-        status: 'waiting', // 待機中
-        hostColor: null
-      };
-      await set(roomRef, roomData);
-      setRoomId(id);
-      isHostRef.current = true;
-      setMyColor(null); // 対戦相手待ち
-    } else {
-      const data = snapshot.val();
-      if (data.status === 'waiting') {
-        // 待機中の部屋に参加（ゲストになる）
-        // ここでランダムに先攻後攻を決定
-        const hostIsBlack = Math.random() < 0.5;
-        const hostColor = hostIsBlack ? 'Black' : 'White';
-        const guestColor = hostIsBlack ? 'White' : 'Black';
-        
-        await update(roomRef, {
-          status: 'playing',
-          hostColor: hostColor
-        });
+      if (!snapshot.exists()) {
+        // 部屋が存在しない場合は作成（ホストになる）
+        const initialState = createInitialState();
+        const roomData = {
+          ...initialState,
+          gameMode: 'Online',
+          status: 'waiting', // 待機中
+          hostColor: null
+        };
+        await set(roomRef, roomData);
         setRoomId(id);
-        setMyColor(guestColor);
-        isHostRef.current = false;
+        isHostRef.current = true;
+        setMyColor(null); // 対戦相手待ち
       } else {
-        alert('部屋が満員か、既にゲームが進行中です。');
+        const data = snapshot.val();
+        if (data.status === 'waiting') {
+          // 待機中の部屋に参加（ゲストになる）
+          // ここでランダムに先攻後攻を決定
+          const hostIsBlack = Math.random() < 0.5;
+          const hostColor = hostIsBlack ? 'Black' : 'White';
+          const guestColor = hostIsBlack ? 'White' : 'Black';
+          
+          await update(roomRef, {
+            status: 'playing',
+            hostColor: hostColor
+          });
+          setRoomId(id);
+          setMyColor(guestColor);
+          isHostRef.current = false;
+        } else {
+          alert('部屋が満員か、既にゲームが進行中です。');
+        }
       }
+    } catch (error) {
+      console.error("Firebase connection error:", error);
+      alert("接続エラーが発生しました。Firebaseの設定(src/firebase.ts)や通信環境を確認してください。");
     }
   }, []);
 
@@ -201,15 +206,11 @@ export const useQuantumGame = () => {
     };
   }, [roomId, myColor]);
 
-  // 勝負がつかなかった場合の自動遷移処理（観測結果表示 -> 元に戻す -> 次のターン）
+  // 勝負がつかなかった場合の自動遷移処理 1: 観測結果表示(2秒) -> 元に戻すアニメーション開始
   useEffect(() => {
     if (!gameState.showNoWinnerMessage) return;
 
-    let revertTimer: number | undefined;
-    let endTurnTimer: number | undefined;
-
-    revertTimer = window.setTimeout(() => {
-      // 1. 盤面を元に戻す
+    const timer = window.setTimeout(() => {
       const stateAfterObservation = gameStateRef.current;
       const revertedBoard: BoardState = stateAfterObservation.board.map(row =>
         row.map(cell => {
@@ -224,31 +225,33 @@ export const useQuantumGame = () => {
       } else {
          setGameState(revertState);
       }
-
-      // 2. アニメーション後にターンを終了する
-      endTurnTimer = window.setTimeout(() => {
-        const stateAfterRevert = gameStateRef.current;
-        const nextTurnPartialState = calculateNextTurnState(stateAfterRevert);
-        const nextTurnState = { 
-            ...stateAfterRevert, 
-            isReverting: false, 
-            ...nextTurnPartialState 
-        };
-        
-        if (stateAfterRevert.gameMode === 'Online') {
-            update(ref(db, `rooms/${roomId}`), nextTurnState);
-        } else {
-            setGameState(nextTurnState);
-        }
-      }, 500);
-
     }, 2000);
 
-    return () => {
-      if (revertTimer) clearTimeout(revertTimer);
-      if (endTurnTimer) clearTimeout(endTurnTimer);
-    };
+    return () => clearTimeout(timer);
   }, [gameState.showNoWinnerMessage, roomId]);
+
+  // 勝負がつかなかった場合の自動遷移処理 2: 元に戻すアニメーション(0.5秒) -> ターン終了
+  useEffect(() => {
+    if (!gameState.isReverting) return;
+
+    const timer = window.setTimeout(() => {
+      const stateAfterRevert = gameStateRef.current;
+      const nextTurnPartialState = calculateNextTurnState(stateAfterRevert);
+      const nextTurnState = { 
+          ...stateAfterRevert, 
+          isReverting: false, 
+          ...nextTurnPartialState 
+      };
+      
+      if (stateAfterRevert.gameMode === 'Online') {
+          update(ref(db, `rooms/${roomId}`), nextTurnState);
+      } else {
+          setGameState(nextTurnState);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [gameState.isReverting, roomId]);
 
   // 石の種類を選択する処理
   const selectStone = useCallback((index: 0 | 1) => {
@@ -524,7 +527,7 @@ export const useQuantumGame = () => {
         }
 
         // 2. 場所の選択 (指向性あり)
-        const target = getCpuMove(currentState.board);
+        const target = getCpuMove(currentState.board, currentState.currentPlayer);
         if (!target) return;
 
         const newBoard = currentState.board.map(r => [...r]);
