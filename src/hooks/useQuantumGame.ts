@@ -99,8 +99,19 @@ export const useQuantumGame = () => {
     const unsubscribe = onValue(roomRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
+        // Firebaseはnullや空配列を保存しないため、boardがundefinedになる可能性がある
+        // データを安全な形式に変換して補完する
+        const initialBoard = createInitialState().board;
+        const syncedBoard = data.board 
+          ? initialBoard.map((row, r) => 
+              data.board[r] 
+                ? row.map((cell, c) => data.board[r][c] || null)
+                : row
+            )
+          : initialBoard;
+
         // ローカルの設定（置き間違い防止など）は維持しつつ、ゲーム状態を同期
-        setGameState(prev => ({ ...data, confirmPlacementMode: prev.confirmPlacementMode }));
+        setGameState(prev => ({ ...data, board: syncedBoard, confirmPlacementMode: prev.confirmPlacementMode }));
         
         // ホストの場合、ゲーム開始時に自分の色を設定
         if (isHostRef.current && data.status === 'playing' && !myColor) {
