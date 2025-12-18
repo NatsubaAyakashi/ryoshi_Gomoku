@@ -370,12 +370,13 @@ export const useQuantumGame = () => {
       pendingStone: null,
     };
 
+    // 楽観的更新: 通信を待たずにローカルの状態を即座に更新
+    setGameState(newState);
+
     // オンラインならDB更新
     if (prev.gameMode === 'Online') {
       if (!roomId) return;
-      update(ref(db, `rooms/${roomId}`), newState);
-    } else {
-      setGameState(newState);
+      update(ref(db, `rooms/${roomId}`), newState).catch(console.error);
     }
   }, [roomId, myColor]);
 
@@ -397,10 +398,11 @@ export const useQuantumGame = () => {
       ...nextTurnPartialState,
     };
 
+    // 楽観的更新
+    setGameState(newState);
+
     if (prev.gameMode === 'Online') {
-      update(ref(db, `rooms/${roomId}`), newState);
-    } else {
-      setGameState(newState);
+      update(ref(db, `rooms/${roomId}`), newState).catch(console.error);
     }
   }, [roomId, myColor]);
 
@@ -433,10 +435,10 @@ export const useQuantumGame = () => {
 
     // 観測開始：まずは収縮アニメーションを開始
     const collapsingState = { ...currentGameState, isCollapsing: true };
+    setGameState(collapsingState); // 楽観的更新
+
     if (currentGameState.gameMode === 'Online') {
-      update(ref(db, `rooms/${roomId}`), collapsingState);
-    } else {
-      setGameState(collapsingState);
+      update(ref(db, `rooms/${roomId}`), collapsingState).catch(console.error);
     }
 
     // 既存のタイマーがあればクリア
@@ -492,10 +494,9 @@ export const useQuantumGame = () => {
         };
       }
 
+      setGameState(newState); // 楽観的更新
       if (prev.gameMode === 'Online') {
-          update(ref(db, `rooms/${roomId}`), newState);
-      } else {
-          setGameState(newState);
+          update(ref(db, `rooms/${roomId}`), newState).catch(console.error);
       }
       timeoutRef.current = undefined;
     }, 1000); // 1秒間パラパラさせる
