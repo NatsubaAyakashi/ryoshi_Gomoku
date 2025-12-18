@@ -52,37 +52,54 @@ export const useQuantumGame = () => {
     try {
       const roomRef = ref(db, `rooms/${id}`);
       const snapshot = await get(roomRef);
-
-      if (!snapshot.exists()) {
-        // 部屋が存在しない場合は作成（ホストになる）
+      
+      // 部屋を作成（または上書き）する関数
+      const createRoom = async () => {
         const initialState = createInitialState();
         const roomData = {
           ...initialState,
           gameMode: 'Online',
           status: 'waiting', // 待機中
-          hostColor: null
+          hostColor: null,
+          connections: { host: true } // 初期接続状態
         };
         await set(roomRef, roomData);
         setRoomId(id);
         isHostRef.current = true;
         setMyColor(null); // 対戦相手待ち
+      };
+
+      if (!snapshot.exists()) {
+        // 部屋が存在しない場合は作成（ホストになる）
+        await createRoom();
       } else {
         const data = snapshot.val();
+        
+        // 待機中の部屋の場合
         if (data.status === 'waiting') {
-          // 待機中の部屋に参加（ゲストになる）
-          // ここでランダムに先攻後攻を決定
-          const hostIsBlack = Math.random() < 0.5;
-          const hostColor = hostIsBlack ? 'Black' : 'White';
-          const guestColor = hostIsBlack ? 'White' : 'Black';
-          
-          await update(roomRef, {
-            status: 'playing',
-            hostColor: hostColor
-          });
-          setRoomId(id);
-          setMyColor(guestColor);
-          isHostRef.current = false;
+          // ホストの接続が切れている場合は、部屋を乗っ取る（上書き作成）
+          if (!data.connections || !data.connections.host) {
+            await createRoom();
+          } else {
+            // 待機中の部屋に参加（ゲストになる）
+            const hostIsBlack = Math.random() < 0.5;
+            const hostColor = hostIsBlack ? 'Black' : 'White';
+            const guestColor = hostIsBlack ? 'White' : 'Black';
+            
+            await update(roomRef, {
+              status: 'playing',
+              hostColor: hostColor
+            });
+            setRoomId(id);
+            setMyColor(guestColor);
+            isHostRef.current = false;
+          }
         } else {
+          // ゲーム進行中の場合でも、両方のプレイヤーがいない場合は部屋をリセット
+          if ((!data.connections?.Black) && (!data.connections?.White)) {
+             await createRoom();
+             return;
+          }
           alert('部屋が満員か、既にゲームが進行中です。');
         }
       }
@@ -124,24 +141,39 @@ export const useQuantumGame = () => {
 
   // オンライン: 接続監視
   useEffect(() => {
-    if (!roomId || !myColor) return;
+    if (!roomId) return;
 
-    const myConnectionRef = ref(db, `rooms/${roomId}/connections/${myColor}`);
     const connectedRef = ref(db, '.info/connected');
-
-    const unsubscribeMy = onValue(connectedRef, (snap) => {
-      if (snap.val() === true) {
-        set(myConnectionRef, true);
-        onDisconnect(myConnectionRef).remove();
-      }
-    });
-
-    const opponentColor = myColor === 'Black' ? 'White' : 'Black';
-    const opponentConnectionRef = ref(db, `rooms/${roomId}/connections/${opponentColor}`);
+    let myConnectionRef: any;
+    let unsubscribeMy: () => void = () => {};
     
+    // 1. 自分の接続状態を管理
+    if (myColor) {
+      // ゲーム中（色が決定している場合）
+      myConnectionRef = ref(db, `rooms/${roomId}/connections/${myColor}`);
+    } else if (isHostRef.current) {
+      // 待機中のホストの場合
+      myConnectionRef = ref(db, `rooms/${roomId}/connections/host`);
+    }
+
+    if (myConnectionRef) {
+      unsubscribeMy = onValue(connectedRef, (snap) => {
+        if (snap.val() === true) {
+          set(myConnectionRef, true);
+          onDisconnect(myConnectionRef).remove();
+        }
+      });
+    }
+
+    // 2. 相手の接続状態を監視（ゲーム中のみ）
+    let unsubscribeOpponent: () => void = () => {};
     let disconnectTimer: number | undefined;
 
-    const unsubscribeOpponent = onValue(opponentConnectionRef, (snap) => {
+    if (myColor) {
+      const opponentColor = myColor === 'Black' ? 'White' : 'Black';
+      const opponentConnectionRef = ref(db, `rooms/${roomId}/connections/${opponentColor}`);
+      
+      unsubscribeOpponent = onValue(opponentConnectionRef, (snap) => {
       if (snap.exists()) {
         if (disconnectTimer !== undefined) {
           clearTimeout(disconnectTimer);
@@ -156,11 +188,12 @@ export const useQuantumGame = () => {
         }
       }
     });
+    }
 
     return () => {
       unsubscribeMy();
       unsubscribeOpponent();
-      set(myConnectionRef, null);
+      if (myConnectionRef) set(myConnectionRef, null);
       if (disconnectTimer !== undefined) clearTimeout(disconnectTimer);
     };
   }, [roomId, myColor]);
