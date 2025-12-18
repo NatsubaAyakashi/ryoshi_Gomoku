@@ -1,5 +1,57 @@
-import { BoardState, Player } from '../types/game';
+import { BoardState, Player, GameState } from '../types/game';
 import { BOARD_SIZE } from './constants';
+
+// 初期状態を生成するヘルパー関数
+export const createInitialState = (): GameState => ({
+  board: Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null)),
+  gameMode: 'PvP',
+  cpuColor: null,
+  currentPlayer: 'Black',
+  selectedStoneIndex: 0,
+  lastBlackStoneIndex: null,
+  lastWhiteStoneIndex: null,
+  blackObservationCount: 5,
+  whiteObservationCount: 5,
+  isStonePlaced: false,
+  winner: null,
+  isGameOver: false,
+  isObserving: false,
+  isCollapsing: false,
+  showNoWinnerMessage: false,
+  confirmPlacementMode: false,
+  pendingStone: null,
+  winningLine: null,
+  isReverting: false,
+});
+
+// 1回分のUndoを行うヘルパー関数（純粋関数）
+export const performUndo = (currentHistory: GameState[]) => {
+  const previousState = currentHistory[currentHistory.length - 1];
+  const newHistory = currentHistory.slice(0, -1);
+  return { state: previousState, history: newHistory };
+};
+
+// 次のターンの状態を計算するヘルパー関数
+export const calculateNextTurnState = (currentState: GameState): Partial<GameState> => {
+  const nextPlayer = currentState.currentPlayer === 'Black' ? 'White' : 'Black';
+
+  // 次のプレイヤーのデフォルト選択を決定（制限がある場合は強制的に変更）
+  let nextSelected: 0 | 1 = 0;
+  if (nextPlayer === 'Black') {
+    if (currentState.lastBlackStoneIndex === 0) nextSelected = 1;
+    else nextSelected = 0;
+  } else {
+    // 白のデフォルトは10% (index 1)
+    if (currentState.lastWhiteStoneIndex === 1) nextSelected = 0;
+    else nextSelected = 1;
+  }
+
+  return {
+    currentPlayer: nextPlayer,
+    selectedStoneIndex: nextSelected,
+    isStonePlaced: false, // フラグをリセット
+  };
+};
 
 /**
  * 盤面をチェックして勝利したプレイヤーを判定する
